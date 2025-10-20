@@ -1203,7 +1203,7 @@ int start_backend() {
         
         // Try to use virtual environment Python first
         if (home) {
-            snprintf(venv_python, sizeof(venv_python), "%s/AI/aiops/venv/bin/python3", home);
+            snprintf(venv_python, sizeof(venv_python), "%s/AI/awesh/venv/bin/python3", home);
             if (access(venv_python, X_OK) == 0) {
                 execl(venv_python, "python3", "-m", "awesh_backend", NULL);
             }
