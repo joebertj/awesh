@@ -2005,21 +2005,9 @@ int is_ai_query(const char* cmd) {
 void execute_command_securely(const char* cmd) {
     // Check if any children are ready
     int backend_ready = (state.backend_pid > 0 && is_process_running(state.backend_pid) && state.socket_fd >= 0);
-    int sandbox_ready = (state.sandbox_pid > 0 && is_process_running(state.sandbox_pid));
-    // Middleware is transparent - backend handles security checks internally
     
-    printf("DEBUG: execute_command_securely called with: %s\n", cmd);
-    
-    if (!backend_ready && !sandbox_ready) {
-        // No children ready - run command directly as bash fallback
-                    if (state.verbose >= 1) {
-            printf("⚠️ No children ready - running command directly\n");
-        }
-        int result = system(cmd);
-        if (result != 0 && state.verbose >= 1) {
-            printf("Command failed (exit %d)\n", result);
-        }
-        return;
+    if (state.verbose >= 2) {
+        printf("DEBUG: execute_command_securely called with: %s\n", cmd);
     }
     
     // Check if this looks like an AI query first
@@ -2036,92 +2024,91 @@ void execute_command_securely(const char* cmd) {
         return;
     }
     
-    // Try to run command directly first
+    // UNFILTERED EXECUTION: Run command directly first (fast execution)
     if (state.verbose >= 2) {
-        printf("🖥️ Attempting direct command execution: %s\n", cmd);
+        printf("🖥️ Running command directly (unfiltered): %s\n", cmd);
     }
     
-    // Try running the command directly
-    int result = system(cmd);
+    // Capture both stdout and stderr to detect anomalies
+    char temp_file[] = "/tmp/awesh_cmd_XXXXXX";
+    int temp_fd = mkstemp(temp_file);
+    if (temp_fd < 0) {
+        // Fallback to direct execution if temp file creation fails
+        int result = system(cmd);
+        if (result != 0 && state.verbose >= 1) {
+            printf("❌ Command failed (exit %d)\n", WEXITSTATUS(result));
+        }
+        return;
+    }
+    close(temp_fd);
     
-    // Check if command executed successfully
-    if (result == 0) {
-        // Command executed successfully - we're done
+    // Execute command and capture stderr
+    char cmd_with_redirect[MAX_CMD_LEN + 100];
+    snprintf(cmd_with_redirect, sizeof(cmd_with_redirect), "%s 2>%s", cmd, temp_file);
+    int result = system(cmd_with_redirect);
+    
+    // Read stderr content
+    char stderr_content[4096] = {0};
+    FILE* stderr_file = fopen(temp_file, "r");
+    if (stderr_file) {
+        fread(stderr_content, 1, sizeof(stderr_content) - 1, stderr_file);
+        fclose(stderr_file);
+    }
+    unlink(temp_file);
+    
+    int exit_code = WEXITSTATUS(result);
+    
+    if (state.verbose >= 2) {
+        printf("DEBUG: Command result - exit_code=%d, stderr_len=%zu\n", exit_code, strlen(stderr_content));
+    }
+    
+    // POST-FACTO DETECTION: Check for anomalous results
+    int is_anomalous = 0;
+    
+    // Check for anomalous exit codes (not 0)
+    if (exit_code != 0) {
+        is_anomalous = 1;
         if (state.verbose >= 2) {
-            printf("✅ Command executed successfully\n");
+            printf("🚨 Anomalous exit code detected: %d\n", exit_code);
+        }
+    }
+    
+    // Check for stderr content (errors)
+    if (strlen(stderr_content) > 0) {
+        is_anomalous = 1;
+        if (state.verbose >= 2) {
+            printf("🚨 Stderr content detected: %s\n", stderr_content);
+        }
+    }
+    
+    // If no anomalies detected, command executed successfully
+    if (!is_anomalous) {
+        if (state.verbose >= 2) {
+            printf("✅ Command executed successfully (no anomalies)\n");
         }
         return;
     }
     
-    // Command failed - check if it's an anomalous return code
-    int exit_code = WEXITSTATUS(result);
-    if (state.verbose >= 2) {
-        printf("❌ Command failed with exit code %d - sending to sandbox for validation\n", exit_code);
-    }
-    
-    // Send to sandbox for validation and routing decision
-    if (state.verbose >= 2) {
-        printf("DEBUG: Sandbox status - PID: %d, Running: %s\n", 
-               state.sandbox_pid, 
-               (state.sandbox_pid > 0 && is_process_running(state.sandbox_pid)) ? "YES" : "NO");
-    }
-    int sandbox_result = test_command_in_sandbox(cmd);
-    
-    if (state.verbose >= 2) {
-        printf("DEBUG: sandbox_result=%d\n", sandbox_result);
-    }
-    
-    if (sandbox_result == 0) {
-        // SAFE - Sandbox validation passed - command should have worked, show error
+    // ANOMALOUS RESULT DETECTED - Get backend assistance
+    if (backend_ready) {
+        if (state.verbose >= 2) {
+            printf("🤔 Anomalous result detected - getting backend assistance\n");
+        }
+        
+        // Show thinking dots while processing
+        printf("🤔 Thinking");
+        fflush(stdout);
+        
+        // Send to backend with context about the anomaly
+        send_to_backend_directly(cmd);
+    } else {
+        // No backend available - show error
         if (state.verbose >= 1) {
             printf("❌ Command failed (exit %d)\n", exit_code);
         }
-        return;
-    } else if (sandbox_result == -113) {
-        // INVALID BASH - Sandbox detected invalid bash command - route to AI
-        if (state.verbose >= 2) {
-            printf("🤖 Sandbox detected invalid bash command - routing to AI\n");
+        if (strlen(stderr_content) > 0) {
+            printf("Error: %s\n", stderr_content);
         }
-        if (backend_ready) {
-            // Show thinking dots while processing
-            printf("🤔 Thinking");
-            fflush(stdout);
-            
-            // Send to middleware and wait for response
-            send_to_backend_directly(cmd);
-        } else {
-            printf("🚫 Backend/middleware not available for AI help\n");
-        }
-        return;
-    } else if (sandbox_result == -103) {
-        // INTERACTIVE - Sandbox detected interactive command (no prompt returned) - run with TTY
-        if (state.verbose >= 2) {
-            printf("🖥️ Sandbox detected interactive command (no prompt returned) - running with TTY\n");
-        }
-        run_interactive_command(cmd);
-        return;
-    } else if (sandbox_result == -109) {
-        // ERROR - Command not found or error (1-2 words) - show error message
-        if (state.verbose >= 1) {
-            printf("❌ Command not found or error\n");
-        }
-        return;
-    } else {
-        // Sandbox validation failed - route to AI
-        if (state.verbose >= 2) {
-            printf("🤖 Sandbox validation failed - routing to backend for AI help\n");
-        }
-        if (backend_ready) {
-            // Show thinking dots while processing
-            printf("🤔 Thinking");
-            fflush(stdout);
-            
-            // Send to middleware and wait for response
-            send_to_backend_directly(cmd);
-        } else {
-            printf("🚫 Backend/middleware not available for AI help\n");
-        }
-        return;
     }
 }
 
@@ -2454,7 +2441,7 @@ int main() {
             }
             cleanup_and_exit(0);
         } else {
-            // 2b - sandbox: send to sandbox, get result, decide routing
+            // Execute command directly (unfiltered) with post-facto anomaly detection
             execute_command_securely(line);
         }
         
