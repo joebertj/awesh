@@ -70,6 +70,14 @@ def switch_to_openai_free():
     save_config(config)
     print("✅ Switched to OpenAI gpt-3.5-turbo (free)")
 
+def switch_to_openai_gpt5():
+    """Switch to OpenAI GPT-5"""
+    config = load_config()
+    config['AI_PROVIDER'] = 'openai'
+    config['MODEL'] = 'gpt-5'
+    save_config(config)
+    print("✅ Switched to OpenAI GPT-5")
+
 def show_current_config():
     """Show current configuration"""
     config = load_config()
@@ -85,6 +93,7 @@ def main():
         print("Usage:")
         print("  python3 switch_model.py mistral    - Switch to OpenRouter Mistral (free)")
         print("  python3 switch_model.py openai     - Switch to OpenAI gpt-3.5-turbo (free)")
+        print("  python3 switch_model.py gpt5       - Switch to OpenAI GPT-5")
         print("  python3 switch_model.py status     - Show current configuration")
         return
     
@@ -94,11 +103,13 @@ def main():
         switch_to_openrouter_mistral()
     elif command == 'openai':
         switch_to_openai_free()
+    elif command == 'gpt5' or command == 'gpt-5':
+        switch_to_openai_gpt5()
     elif command == 'status':
         show_current_config()
     else:
         print(f"Unknown command: {command}")
-        print("Use 'mistral', 'openai', or 'status'")
+        print("Use 'mistral', 'openai', 'gpt5', or 'status'")
 
 if __name__ == '__main__':
     main()

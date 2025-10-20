@@ -15,7 +15,7 @@ class Config:
     
     # AI Model settings
     model: str = "mistralai/mistral-small-3.1-24b-instruct:free"  # Default to free Mistral via OpenRouter
-    temperature: float = 0.1
+    temperature: float = 1.0  # Default to 1.0 for compatibility with all models (GPT-5 requires 1.0)
     max_tokens: int = 2000
     streaming: bool = True
     
