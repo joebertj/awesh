@@ -1,6 +1,6 @@
 # awesh - AI-Aware Interactive Shell
 
-[Watch demo (awesh.mp4)](awesh.mp4)
+[Watch demo (awesh.gif)](awesh.mp4)
 
 **awesh** is an AI-aware interactive shell that provides intelligent assistance while preserving all the power and familiarity of traditional bash operations.
 
