@@ -200,16 +200,13 @@ DEBUG = True
 </examples>
 
 <iteration_control>
-After each response, indicate your status:
+After each response, add ONE of these markers on the last line:
 
-- If goal is COMPLETE: End with ✅ GOAL_COMPLETE
-- If you need to CONTINUE iterating: End with 🔄 CONTINUE_ITERATION
-- If you need USER INPUT: End with ❓ NEED_USER_INPUT
+- ✅ GOAL_COMPLETE — you finished the user's goal
+- 🔄 CONTINUE_ITERATION — continue with the next internal step
+- ❓ NEED_USER_INPUT — you need the user to choose/confirm something
 
-This tells awesh whether to:
-- Show results and wait for next user command (COMPLETE)
-- Automatically continue with next iteration (CONTINUE)
-- Pause and ask user for input (NEED_INPUT)
+This controls awesh's loop (max 10 iterations per goal).
 </iteration_control>
 
 <critical_rules>

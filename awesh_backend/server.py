@@ -374,6 +374,7 @@ Help the user based on this result."""
             # Format response
             output = "📝 File Edit Results:\n\n"
             success_count = 0
+            created_files = []
             
             for result in results:
                 if result.success:
@@ -381,10 +382,23 @@ Help the user based on this result."""
                     output += f"✅ {result.message}\n"
                     if result.backup_path:
                         output += f"   Backup: {result.backup_path}\n"
+                    # Heuristic: detect newly created files from message text
+                    if "Successfully created" in result.message:
+                        created_files.append(result.file_path)
                 else:
                     output += f"❌ {result.message}\n"
             
             output += f"\n📊 {success_count}/{len(results)} edits applied successfully\n"
+
+            # Add helpful follow-up instructions for newly created scripts
+            if created_files:
+                output += "\n➡️  Next steps:\n"
+                for filepath in created_files:
+                    filename = filepath.split('/')[-1]
+                    output += (
+                        f"   • Run with sh: sh {filename}\n"
+                        f"   • Or make executable: chmod +x {filename} && ./{filename}\n"
+                    )
             
             # Include original AI response if there's additional context
             if '```' not in ai_response or len(ai_response.split('```')[0].strip()) > 10:
