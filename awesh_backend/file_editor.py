@@ -151,7 +151,28 @@ class FileEditor:
         """
         file_path = Path(edit.file_path).expanduser()
         
-        # Validate file exists
+        # Handle file creation (OLD content is empty)
+        if not edit.old_content or edit.old_content.strip() == "":
+            # Creating a new file
+            try:
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(edit.new_content)
+                
+                return EditResult(
+                    success=True,
+                    message=f"Successfully created {file_path.name}",
+                    file_path=str(file_path),
+                    changes_made=1
+                )
+            except Exception as e:
+                return EditResult(
+                    success=False,
+                    message=f"Failed to create file: {e}",
+                    file_path=str(file_path)
+                )
+        
+        # Validate file exists for editing
         if not file_path.exists():
             return EditResult(
                 success=False,

@@ -261,53 +261,19 @@ Respond with:
                 debug_log(f"File agent enhanced prompt with file context")
                 prompt = enhanced_prompt
             
-            # Give AI full context with vi terminology and explicit awesh: format instructions
+            # Give AI context about bash results
             if bash_result:
                 ai_input = f"""User command: {prompt}
+
 Bash result:
 - Exit code: {bash_result.get('exit_code', 0)}
 - Stdout: {bash_result.get('stdout', '')}
 - Stderr: {bash_result.get('stderr', '')}
 
-Process this and respond appropriately. You have two response modes (borrowed from vi editor):
-
-1. NORMAL MODE (default): Regular text response for information, explanations, or analysis
-   - Just provide your response as normal text
-   - This is like vi's normal mode - for reading and navigation
-
-2. COMMAND MODE: When you need to execute shell commands, use this format:
-   awesh: <command>
-   - This is like vi's command mode - for executing commands
-   - The command will be executed through security middleware
-
-Examples:
-- For file listing: awesh: ls -la
-- For finding files: awesh: find . -name "*.py" -mtime -1
-- For system info: awesh: ps aux | grep python
-- For editing files: awesh: vi filename.txt
-
-The awesh: prefix tells the system to execute the command through security middleware, just like : in vi executes commands."""
+Help the user based on this result."""
             else:
-                ai_input = f"""{prompt}
-
-You have two response modes (borrowed from vi editor):
-
-1. NORMAL MODE (default): Regular text response for information, explanations, or analysis
-   - Just provide your response as normal text
-   - This is like vi's normal mode - for reading and navigation
-
-2. COMMAND MODE: When you need to execute shell commands, use this format:
-   awesh: <command>
-   - This is like vi's command mode - for executing commands
-   - The command will be executed through security middleware
-
-Examples:
-- For file listing: awesh: ls -la
-- For finding files: awesh: find . -name "*.py" -mtime -1
-- For system info: awesh: ps aux | grep python
-- For editing files: awesh: vi filename.txt
-
-The awesh: prefix tells the system to execute the command through security middleware, just like : in vi executes commands."""
+                # Simple user prompt - system prompt already has all instructions
+                ai_input = prompt
             
             # Collect response with timeout (compatible with older Python)
             output = "🤖 "
