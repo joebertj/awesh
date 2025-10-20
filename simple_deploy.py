@@ -134,6 +134,36 @@ def git_commit():
         log(f"❌ Git error: {e}")
         return False
 
+def run_tests():
+    """Run comprehensive test suite"""
+    log("🧪 Running awesh test suite...")
+    try:
+        result = subprocess.run(
+            [sys.executable, "test_awesh.py"],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        # Print test output
+        if result.stdout:
+            print(result.stdout)
+        if result.stderr:
+            print(result.stderr)
+        
+        if result.returncode == 0:
+            log("✅ All tests passed!")
+            return True
+        else:
+            log("❌ Some tests failed")
+            return False
+    except subprocess.TimeoutExpired:
+        log("❌ Test suite timeout")
+        return False
+    except Exception as e:
+        log(f"❌ Test suite error: {e}")
+        return False
+
 def full_deploy():
     """Full deployment: kill, build, deploy, commit"""
     log("🚀 Starting full deployment...")
@@ -168,6 +198,7 @@ def main():
         log("  kill        - Kill running processes")
         log("  deploy      - Deploy binaries")
         log("  commit      - Git commit and push")
+        log("  test        - Run comprehensive test suite")
         log("  full        - Full deployment (kill + build + deploy + commit)")
         return
     
@@ -183,6 +214,8 @@ def main():
         deploy()
     elif command == "commit":
         git_commit()
+    elif command == "test":
+        run_tests()
     elif command == "full":
         full_deploy()
     else:
