@@ -972,11 +972,11 @@ void load_config() {
     
     // Set default MODEL based on AI provider (after config is loaded)
     if (!getenv("MODEL")) {
-        const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
+        const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openrouter";
         if (strcmp(ai_provider, "openrouter") == 0) {
-            setenv("MODEL", "claude-sonnet", 1);  // Default OpenRouter model
+            setenv("MODEL", "mistralai/mistral-small-3.1-24b-instruct:free", 1);  // Default OpenRouter Mistral model
         } else {
-            setenv("MODEL", "gpt-5", 1);  // Default OpenAI model
+            setenv("MODEL", "gpt-3.5-turbo", 1);  // Default OpenAI free model
         }
     }
 }

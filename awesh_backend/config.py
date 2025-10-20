@@ -14,7 +14,7 @@ class Config:
     """Configuration settings for awesh"""
     
     # AI Model settings
-    model: str = "gpt-4"
+    model: str = "mistralai/mistral-small-3.1-24b-instruct:free"  # Default to free Mistral via OpenRouter
     temperature: float = 0.1
     max_tokens: int = 2000
     streaming: bool = True
