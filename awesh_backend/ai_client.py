@@ -147,6 +147,35 @@ EFFICIENCY RULES:
 - Provide the most direct path to the solution
 - Focus on the task, not the theory
 
+FILE EDITING (like Claude/Cursor):
+When user asks to edit/modify/update file content, use this format:
+
+```edit:path/to/file.txt
+<<<<<<< OLD
+exact content to find
+=======
+new content to replace with
+>>>>>>> NEW
+```
+
+Rules for file editing:
+- OLD content must match exactly (including indentation/whitespace)
+- Include enough context lines to make the match unique
+- Can make multiple edits in one response
+- Backups are created automatically
+- Use this for surgical edits, not full file rewrites
+
+Example:
+User: "update the port in config.py to 8080"
+Response:
+```edit:config.py
+<<<<<<< OLD
+PORT = 3000
+=======
+PORT = 8080
+>>>>>>> NEW
+```
+
 Remember: Terminal users want to execute and see results. Give them the exact commands they need to achieve their goals."""
         
     async def _create_default_system_prompt_file(self, prompt_file: Path):

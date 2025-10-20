@@ -14,6 +14,7 @@ from .config import Config
 from .ai_client import AweshAIClient
 # Bash execution handled by C frontend
 from .file_agent import FileAgent
+from .file_editor import FileEditor, get_file_editor
 
 # Global verbose setting
 def debug_log(message):
@@ -50,6 +51,9 @@ class AweshSocketBackend:
             enabled=file_agent_enabled,
             ai_enhance=file_agent_ai_enhance
         )
+        
+        # Initialize file editor
+        self.file_editor = get_file_editor()
         
     async def initialize(self):
         """Initialize AI components"""
@@ -323,6 +327,11 @@ The awesh: prefix tells the system to execute the command through security middl
                 response = await asyncio.wait_for(collect_response(), timeout=300)  # 5 minutes
                 debug_log(f"Got response: {len(response)} chars")
                 
+                # Check for file edits first
+                if '```edit:' in response or 'EDIT:' in response:
+                    debug_log("Detected file edit blocks in AI response")
+                    return await self._handle_file_edits(response)
+                
                 # Handle empty response with retry
                 if not response or len(response.strip()) == 0:
                     debug_log("❌ Empty AI response received! Retrying once...")
@@ -370,6 +379,51 @@ The awesh: prefix tells the system to execute the command through security middl
                 
         except Exception as e:
             return f"❌ AI error: {e}\n"
+    
+    async def _handle_file_edits(self, ai_response: str) -> str:
+        """Handle file edits from AI response"""
+        debug_log("Processing file edit blocks")
+        
+        try:
+            # Parse edit blocks from AI response
+            edits = self.file_editor.parse_edit_block(ai_response)
+            
+            if not edits:
+                debug_log("No valid edit blocks found")
+                return f"🤖 {ai_response}\n"
+            
+            debug_log(f"Found {len(edits)} edit blocks")
+            
+            # Apply edits
+            results = self.file_editor.apply_multiple_edits(edits)
+            
+            # Format response
+            output = "📝 File Edit Results:\n\n"
+            success_count = 0
+            
+            for result in results:
+                if result.success:
+                    success_count += 1
+                    output += f"✅ {result.message}\n"
+                    if result.backup_path:
+                        output += f"   Backup: {result.backup_path}\n"
+                else:
+                    output += f"❌ {result.message}\n"
+            
+            output += f"\n📊 {success_count}/{len(results)} edits applied successfully\n"
+            
+            # Include original AI response if there's additional context
+            if '```' not in ai_response or len(ai_response.split('```')[0].strip()) > 10:
+                # There's text before the edit blocks
+                preamble = ai_response.split('```')[0].strip()
+                if preamble:
+                    output = f"🤖 {preamble}\n\n{output}"
+            
+            return output
+            
+        except Exception as e:
+            debug_log(f"Error handling file edits: {e}")
+            return f"❌ Error processing file edits: {e}\n🤖 Original response:\n{ai_response}\n"
     
     async def _extract_and_execute_commands(self, ai_response: str, retry_count: int = 0) -> str:
         """Extract awesh: commands from AI response and execute them using stack approach"""
