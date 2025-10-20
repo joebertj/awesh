@@ -1,6 +1,6 @@
 # awesh - AI-Aware Interactive Shell
 
-![awesh](awesh.png)
+![awesh](awesh-20251020123516.png)
 
 **awesh** is an AI-aware interactive shell that provides intelligent assistance while preserving all the power and familiarity of traditional bash operations.
 
