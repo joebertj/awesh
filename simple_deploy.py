@@ -139,7 +139,7 @@ def run_tests():
     log("🧪 Running awesh test suite...")
     try:
         result = subprocess.run(
-            [sys.executable, "test_awesh.py"],
+            [sys.executable, "tests/test_awesh.py"],
             capture_output=True,
             text=True,
             timeout=120

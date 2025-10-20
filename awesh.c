@@ -2029,55 +2029,36 @@ void execute_command_securely(const char* cmd) {
         printf("🖥️ Running command directly (unfiltered): %s\n", cmd);
     }
     
-    // Capture both stdout and stderr to detect anomalies
-    char temp_file[] = "/tmp/awesh_cmd_XXXXXX";
-    int temp_fd = mkstemp(temp_file);
-    if (temp_fd < 0) {
-        // Fallback to direct execution if temp file creation fails
-        int result = system(cmd);
-        if (result != 0 && state.verbose >= 1) {
-            printf("❌ Command failed (exit %d)\n", WEXITSTATUS(result));
-        }
-        return;
-    }
-    close(temp_fd);
-    
-    // Execute command and capture stderr
-    char cmd_with_redirect[MAX_CMD_LEN + 100];
-    snprintf(cmd_with_redirect, sizeof(cmd_with_redirect), "%s 2>%s", cmd, temp_file);
-    int result = system(cmd_with_redirect);
-    
-    // Read stderr content
-    char stderr_content[4096] = {0};
-    FILE* stderr_file = fopen(temp_file, "r");
-    if (stderr_file) {
-        fread(stderr_content, 1, sizeof(stderr_content) - 1, stderr_file);
-        fclose(stderr_file);
-    }
-    unlink(temp_file);
+    // Execute command directly (unfiltered)
+    int result = system(cmd);
     
     int exit_code = WEXITSTATUS(result);
     
     if (state.verbose >= 2) {
-        printf("DEBUG: Command result - exit_code=%d, stderr_len=%zu\n", exit_code, strlen(stderr_content));
+        printf("DEBUG: Command result - exit_code=%d\n", exit_code);
     }
     
-    // POST-FACTO DETECTION: Check for anomalous results
-    int is_anomalous = 0;
-    
-    // Check for anomalous exit codes (not 0)
-    if (exit_code != 0) {
-        is_anomalous = 1;
-        if (state.verbose >= 2) {
-            printf("🚨 Anomalous exit code detected: %d\n", exit_code);
-        }
+    // POST-FACTO DETECTION: Only treat non-zero exit codes as anomalous
+    int is_anomalous = (exit_code != 0);
+    if (is_anomalous && state.verbose >= 2) {
+        printf("🚨 Anomalous exit code detected: %d\n", exit_code);
     }
-    
-    // Check for stderr content (errors)
-    if (strlen(stderr_content) > 0) {
-        is_anomalous = 1;
-        if (state.verbose >= 2) {
-            printf("🚨 Stderr content detected: %s\n", stderr_content);
+
+    // If anomalous and looks like an interactive program, rerun with TTY
+    if (is_anomalous) {
+        char first_word[64] = {0};
+        sscanf(cmd, "%63s", first_word);
+        if (strcmp(first_word, "top") == 0 || strcmp(first_word, "watch") == 0 ||
+            strcmp(first_word, "vi") == 0 || strcmp(first_word, "vim") == 0 ||
+            strcmp(first_word, "less") == 0) {
+            // Only rerun interactively if we have a TTY (real user session)
+            if (isatty(STDIN_FILENO)) {
+                if (state.verbose >= 2) {
+                    printf("🖥️ Detected interactive program after failure - rerunning with TTY: %s\n", first_word);
+                }
+                run_interactive_command(cmd);
+                return;
+            }
         }
     }
     
@@ -2105,9 +2086,6 @@ void execute_command_securely(const char* cmd) {
         // No backend available - show error
         if (state.verbose >= 1) {
             printf("❌ Command failed (exit %d)\n", exit_code);
-        }
-        if (strlen(stderr_content) > 0) {
-            printf("Error: %s\n", stderr_content);
         }
     }
 }
