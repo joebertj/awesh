@@ -1,6 +1,0 @@
-Hello World
-This is a test file
-Port: 3000
-Environment: development
-Debug: false
-

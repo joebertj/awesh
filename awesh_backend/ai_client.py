@@ -282,13 +282,14 @@ This tells awesh whether to:
             }
             
             # Handle model-specific parameters
-            if model_name.startswith('gpt-5') or model_name.startswith('o1'):
-                # GPT-5 requires max_completion_tokens instead of max_tokens
+            if model_name.startswith('o1'):
+                # O1 models use max_completion_tokens and don't support temperature
                 api_params["max_completion_tokens"] = self.config.max_tokens
-                # GPT-5 only supports temperature=1.0 (default value)
-                # Don't set temperature parameter - let it use the default
-                # Add top_p for better command generation (if supported)
-                # api_params["top_p"] = 0.9  # Skip for GPT-5 compatibility
+                # Don't set temperature - o1 models don't support it
+            elif model_name.startswith('gpt-4o'):
+                # GPT-4o supports standard parameters
+                api_params["max_tokens"] = self.config.max_tokens
+                api_params["temperature"] = self.config.temperature
             else:
                 # Other models support standard parameters
                 api_params["max_tokens"] = self.config.max_tokens
