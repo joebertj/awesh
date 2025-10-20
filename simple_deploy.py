@@ -7,6 +7,7 @@ Usage: python3 simple_deploy.py [command]
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 def log(message):
