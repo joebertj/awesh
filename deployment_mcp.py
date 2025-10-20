@@ -659,6 +659,50 @@ def clean_install():
     log("\n🎉 Clean install completed successfully!")
     return True
 
+def rebuild_all():
+    """Rebuild Everything: Remove venv, clean build, install deps, deploy"""
+    log("🚀 Starting complete rebuild...")
+    
+    # Step 1: Kill existing processes
+    log("\n🛑 Step 1: Kill Existing Processes")
+    kill_processes(force=True)
+    
+    # Step 2: Remove venv
+    log("\n🧹 Step 2: Remove Virtual Environment")
+    if VENV_DIR.exists():
+        import shutil
+        shutil.rmtree(VENV_DIR)
+        log("✅ Virtual environment removed")
+    else:
+        log("ℹ️  No virtual environment to remove")
+    
+    # Step 3: Setup fresh venv
+    log("\n🐍 Step 3: Setup Fresh Virtual Environment")
+    if not setup_venv():
+        log("❌ Rebuild aborted - venv setup failed")
+        return False
+    
+    # Step 4: Install dependencies
+    log("\n📦 Step 4: Install Dependencies")
+    if not install_dependencies():
+        log("❌ Rebuild aborted - dependency install failed")
+        return False
+    
+    # Step 5: Clean build
+    log("\n🔨 Step 5: Clean Build")
+    if not build_project(clean=True):
+        log("❌ Rebuild aborted - build failed")
+        return False
+    
+    # Step 6: Deploy
+    log("\n📦 Step 6: Deploy")
+    if not deploy_binary(backup=True):
+        log("❌ Rebuild failed")
+        return False
+    
+    log("\n🎉 Complete rebuild successful!")
+    return True
+
 def main():
     """Main entry point"""
     if len(sys.argv) < 2:
@@ -667,6 +711,7 @@ def main():
         log("  build          - CI pipeline: checks, bins, git push")
         log("  install        - Deploy pipeline: git pull, build, kills procs, deploy")
         log("  clean_install  - Build + deploy + git push (no git pull)")
+        log("  rebuild_all    - Complete rebuild: remove venv, clean build, install deps, deploy")
         log("\nEnvironment Commands:")
         log("  setup_venv     - Create virtual environment")
         log("  install_deps   - Install all dependencies in venv")
@@ -691,6 +736,8 @@ def main():
         install_deploy(skip_tests=False)
     elif command == "clean_install":
         clean_install()
+    elif command == "rebuild_all":
+        rebuild_all()
     
     # Environment Commands
     elif command == "setup_venv":
