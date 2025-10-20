@@ -976,7 +976,7 @@ void load_config() {
         if (strcmp(ai_provider, "openrouter") == 0) {
             setenv("MODEL", "mistralai/mistral-small-3.1-24b-instruct:free", 1);  // Default OpenRouter Mistral model
         } else {
-            setenv("MODEL", "gpt-3.5-turbo", 1);  // Default OpenAI free model
+            setenv("MODEL", "gpt-4-turbo", 1);  // Default OpenAI model
         }
     }
 }
@@ -1898,9 +1898,14 @@ void send_to_backend_directly(const char* cmd) {
                 if (bytes_received > 0) {
                     response[bytes_received] = '\0';
                     
+                    if (state.verbose >= 2) {
+                        printf("\nDEBUG: Received %zd bytes from backend\n", bytes_received);
+                        printf("DEBUG: Response preview: '%.100s...'\n", response);
+                    }
+                    
                     // Clear thinking dots and show response
                     printf("\r                    \r");  // Clear line
-                printf("%s", response);
+                    printf("%s", response);
                     return;
                 }
             } else if (result == 0) {
@@ -1947,9 +1952,10 @@ int is_ai_query(const char* cmd) {
     const char* ai_indicators[] = {
         "write", "create", "generate", "explain", "analyze", "summarize",
         "what", "how", "why", "when", "where", "who", "which",
-        "help", "assist", "suggest", "recommend", "find", "search",
+        "help", "assist", "suggest", "recommend", 
         "poem", "story", "code", "script", "function", "class",
         "error", "bug", "issue", "problem", "fix", "solution",
+        "deploy", "setup", "configure", "install",
         NULL
     };
     
@@ -1962,16 +1968,9 @@ int is_ai_query(const char* cmd) {
         lower_cmd[i] = tolower(lower_cmd[i]);
     }
     
-    // Check for AI indicators
-    for (int i = 0; ai_indicators[i] != NULL; i++) {
-        if (strstr(lower_cmd, ai_indicators[i])) {
-            return 1;  // Looks like an AI query
-        }
-    }
-    
-    // Check for question marks
+    // Check for question marks - strong AI indicator
     if (strchr(cmd, '?')) {
-        return 1;  // Contains question mark
+        return 1;
     }
     
     // Check for shell-like patterns (if it looks like shell, it's probably not AI)
@@ -1980,22 +1979,45 @@ int is_ai_query(const char* cmd) {
         return 0;  // Shell-like syntax
     }
     
-    // Check for known shell commands
+    // Check for known shell commands at start
     const char* shell_commands[] = {
-        "ls", "cd", "pwd", "cat", "grep", "find", "ps", "top", "kill",
+        "ls", "cd", "pwd", "cat", "grep", "ps", "top", "kill",
         "mkdir", "rmdir", "rm", "cp", "mv", "chmod", "chown", "sudo",
         "git", "docker", "kubectl", "ssh", "scp", "rsync", "tar", "gzip",
         "vim", "nano", "emacs", "less", "more", "head", "tail", "sort",
-        "awk", "sed", "cut", "uniq", "wc", "diff", "patch", "make",
+        "awk", "sed", "cut", "uniq", "wc", "diff", "patch", "make", "find", "search",
+        "echo", "printf", "touch", "ln", "du", "df", "free", "uptime", "date",
         NULL
     };
     
     char first_word[256];
     sscanf(cmd, "%255s", first_word);
     
+    // Convert first word to lowercase
+    for (int i = 0; first_word[i]; i++) {
+        first_word[i] = tolower(first_word[i]);
+    }
+    
     for (int i = 0; shell_commands[i] != NULL; i++) {
         if (strcmp(first_word, shell_commands[i]) == 0) {
             return 0;  // Known shell command
+        }
+    }
+    
+    // Check for AI indicators (natural language patterns)
+    for (int i = 0; ai_indicators[i] != NULL; i++) {
+        if (strstr(lower_cmd, ai_indicators[i])) {
+            // Additional check: if it's a multi-word phrase, likely AI query
+            int word_count = 0;
+            const char* p = cmd;
+            while (*p) {
+                if (*p == ' ') word_count++;
+                p++;
+            }
+            
+            if (word_count >= 2) {
+                return 1;  // Multi-word with AI indicators = AI query
+            }
         }
     }
     
@@ -2010,7 +2032,7 @@ void execute_command_securely(const char* cmd) {
         printf("DEBUG: execute_command_securely called with: %s\n", cmd);
     }
     
-    // Check if this looks like an AI query first
+    // Check if this looks like an AI query first (BEFORE executing)
     if (is_ai_query(cmd) && backend_ready) {
         if (state.verbose >= 2) {
             printf("🤖 AI query detected: %s\n", cmd);
@@ -2024,12 +2046,12 @@ void execute_command_securely(const char* cmd) {
         return;
     }
     
-    // UNFILTERED EXECUTION: Run command directly first (fast execution)
+    // UNFILTERED EXECUTION: Run command directly (fast execution)
     if (state.verbose >= 2) {
         printf("🖥️ Running command directly (unfiltered): %s\n", cmd);
     }
     
-    // Execute command directly (unfiltered)
+    // Execute command directly (unfiltered) - only if NOT an AI query
     int result = system(cmd);
     
     int exit_code = WEXITSTATUS(result);

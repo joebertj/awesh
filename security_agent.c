@@ -305,6 +305,10 @@ int main() {
                 
                 buffer[bytes] = '\0';
                 
+                // Output security heartbeat token to stderr (every prompt)
+                fprintf(stderr, "🔒✓\n");
+                fflush(stderr);
+                
                 // Validate command before forwarding to backend
                 if (validate_command(buffer)) {
                     // Forward to backend

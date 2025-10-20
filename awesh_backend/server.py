@@ -15,6 +15,8 @@ from .ai_client import AweshAIClient
 # Bash execution handled by C frontend
 from .file_agent import FileAgent
 from .file_editor import FileEditor, get_file_editor
+from .execution_agent import ExecutionAgent, get_execution_agent
+from .todo_agent import TODOAgent, get_todo_agent, TaskStatus
 
 # Global verbose setting
 def debug_log(message):
@@ -54,6 +56,12 @@ class AweshSocketBackend:
         
         # Initialize file editor
         self.file_editor = get_file_editor()
+        
+        # Initialize execution agent
+        self.execution_agent = get_execution_agent()
+        
+        # Initialize TODO agent
+        self.todo_agent = get_todo_agent()
         
     async def initialize(self):
         """Initialize AI components"""
@@ -385,11 +393,35 @@ Help the user based on this result."""
                 if preamble:
                     output = f"🤖 {preamble}\n\n{output}"
             
+            # Check for iteration control markers
+            output = self._add_iteration_control(output, ai_response)
+            
             return output
             
         except Exception as e:
             debug_log(f"Error handling file edits: {e}")
             return f"❌ Error processing file edits: {e}\n🤖 Original response:\n{ai_response}\n"
+    
+    def _add_iteration_control(self, output: str, ai_response: str) -> str:
+        """Add iteration control based on AI markers"""
+        # Check for iteration control markers
+        if "✅ GOAL_COMPLETE" in ai_response or "GOAL_COMPLETE" in ai_response:
+            # Goal is complete - no iteration needed
+            debug_log("Goal marked as complete by AI")
+            return output
+        elif "🔄 CONTINUE_ITERATION" in ai_response or "CONTINUE_ITERATION" in ai_response:
+            # AI wants to continue - would trigger another iteration
+            debug_log("AI wants to continue iteration")
+            output += "\n🔄 Continuing...\n"
+            return output
+        elif "❓ NEED_USER_INPUT" in ai_response or "NEED_USER_INPUT" in ai_response:
+            # AI needs user input
+            debug_log("AI needs user input")
+            output += "\n❓ Waiting for your input...\n"
+            return output
+        else:
+            # No marker - assume complete
+            return output
     
     async def _extract_and_execute_commands(self, ai_response: str, retry_count: int = 0) -> str:
         """Extract awesh: commands from AI response and execute them using stack approach"""
