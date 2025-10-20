@@ -2036,37 +2036,6 @@ void execute_command_securely(const char* cmd) {
         return;
     }
     
-    // Pre-detect known interactive commands before sandbox testing
-    // These commands will hang in sandbox (non-TTY environment like Cursor agent terminals)
-    const char* interactive_commands[] = {
-        "vi ", "vim ", "nano ", "emacs ", "top", "htop", "less ", "more ",
-        "man ", "watch ", "ssh ", "telnet ", "ftp ", "python", "python3",
-        "irb", "node", "mysql", "psql", "redis-cli"
-    };
-    
-    int is_known_interactive = 0;
-    for (size_t i = 0; i < sizeof(interactive_commands) / sizeof(interactive_commands[0]); i++) {
-        if (strncmp(cmd, interactive_commands[i], strlen(interactive_commands[i])) == 0) {
-            is_known_interactive = 1;
-            break;
-        }
-    }
-    
-    // Also check for commands without arguments (like top, htop, vi, vim without args)
-    if (strcmp(cmd, "vi") == 0 || strcmp(cmd, "vim") == 0 || strcmp(cmd, "nano") == 0 ||
-        strcmp(cmd, "top") == 0 || strcmp(cmd, "htop") == 0 || strcmp(cmd, "less") == 0 ||
-        strcmp(cmd, "more") == 0) {
-        is_known_interactive = 1;
-    }
-    
-    if (is_known_interactive) {
-        if (state.verbose >= 2) {
-            printf("🖥️ Known interactive command detected - skipping sandbox: %s\n", cmd);
-        }
-        run_interactive_command(cmd);
-        return;
-    }
-    
     // 2b - sandbox: send to sandbox, get result, decide routing
     if (state.verbose >= 2) {
         printf("DEBUG: Sandbox status - PID: %d, Running: %s\n", 
@@ -2116,9 +2085,9 @@ void execute_command_securely(const char* cmd) {
         }
         return;
     } else if (sandbox_result == -103) {
-        // INTERACTIVE - Sandbox detected interactive command - run with TTY
+        // INTERACTIVE - Sandbox detected interactive command (no prompt returned) - run with TTY
         if (state.verbose >= 2) {
-            printf("🖥️ Sandbox detected interactive command - running with TTY\n");
+            printf("🖥️ Sandbox detected interactive command (no prompt returned) - running with TTY\n");
         }
         run_interactive_command(cmd);
         return;
