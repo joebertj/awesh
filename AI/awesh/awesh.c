@@ -2503,51 +2503,17 @@ int main() {
 
 void run_interactive_command(const char* cmd) {
     // For interactive commands like vi, watch, top, etc., we need to run them directly
-    // with proper TTY support and shell expansion
+    // with proper TTY support. Use system() which properly handles TTY passthrough.
     
-    // Fork to run the interactive command
-    pid_t pid = fork();
-    if (pid == 0) {
-        // Child process: run the command with proper TTY and shell expansion
-        
-        // Set TERM environment variable for proper terminal support
-        setenv("TERM", "xterm-256color", 1);
-        
-        // Expand tilde before passing to bash for interactive commands
-        char expanded_cmd[MAX_CMD_LEN];
-        strncpy(expanded_cmd, cmd, sizeof(expanded_cmd) - 1);
-        expanded_cmd[sizeof(expanded_cmd) - 1] = '\0';
-        
-        // Simple tilde expansion for interactive commands
-        if (expanded_cmd[0] == '~') {
-            const char* home = getenv("HOME");
-            if (home) {
-                char temp[MAX_CMD_LEN];
-                snprintf(temp, sizeof(temp), "%s%s", home, expanded_cmd + 1);
-                strncpy(expanded_cmd, temp, sizeof(expanded_cmd) - 1);
-                expanded_cmd[sizeof(expanded_cmd) - 1] = '\0';
-            }
-        }
-        
-        // Use bash -c to handle shell expansions (tilde, variables, etc.)
-        // This ensures proper expansion while maintaining TTY support
-        execl("/bin/bash", "bash", "-c", expanded_cmd, NULL);
-        exit(1); // Should not reach here
-    } else if (pid > 0) {
-        // Parent process: wait for child to complete
-        int status;
-        waitpid(pid, &status, 0);
-        
-        if (WEXITSTATUS(status) != 0 && state.verbose >= 1) {
-            printf("Command failed (exit %d)\n", WEXITSTATUS(status));
-        }
-    } else {
-        // Fork failed - fallback to system()
-        perror("Failed to fork for interactive command");
-        int result = system(cmd);
-        if (result != 0 && state.verbose >= 1) {
-            printf("Command failed (exit %d)\n", result);
-        }
+    if (state.verbose >= 2) {
+        printf("🖥️ Running interactive command: %s\n", cmd);
+    }
+    
+    // system() properly handles TTY, allowing interactive programs like vi to work
+    int result = system(cmd);
+    
+    if (result != 0 && state.verbose >= 1) {
+        printf("Command exited with code %d\n", WEXITSTATUS(result));
     }
 }
 
