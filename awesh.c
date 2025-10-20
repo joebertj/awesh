@@ -2524,21 +2524,24 @@ int main() {
 
 void run_interactive_command(const char* cmd) {
     // For interactive commands like vi, watch, top, etc., we need to run them directly
-    // with proper TTY support using system() which handles TTY correctly.
+    // with proper TTY support. When running from within readline, we need to properly
+    // release and restore terminal control.
     
     if (state.verbose >= 2) {
         printf("🖥️ Running interactive command: %s\n", cmd);
     }
     
-    // Save current terminal settings
-    struct termios orig_termios;
-    tcgetattr(STDIN_FILENO, &orig_termios);
+    // Deactivate readline's line handler to release terminal control
+    rl_deprep_terminal();
     
     // Use system() which properly handles TTY for interactive programs
     int result = system(cmd);
     
-    // Restore terminal settings (vi may have changed them)
-    tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
+    // Reactivate readline's terminal control
+    rl_prep_terminal(1);
+    
+    // Force readline to refresh the prompt
+    printf("\n");
     
     if (result != 0 && state.verbose >= 1) {
         printf("Command exited with code %d\n", WEXITSTATUS(result));
