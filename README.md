@@ -6,44 +6,55 @@
 
 ## ⚡ Quickstart - Get awesh Running Fast
 
-### 🚀 One-Command Installation
+### 🚀 Installation
 ```bash
 # Clone and install awesh
 git clone https://github.com/joebertj/awesh.git
 cd awesh
-python3 deployment_mcp.py clean_install
+
+# Build and deploy
+python3 simple_deploy.py full
+
+# Or step by step:
+python3 simple_deploy.py build          # Build awesh
+python3 simple_deploy.py deploy         # Deploy to ~/.local/bin
+python3 simple_deploy.py test           # Run test suite
 ```
 
-### 🔑 Configure Your API Key
+### 🔑 Configure Your AI
 ```bash
-# Set your OpenAI API key
-export OPENAI_API_KEY=your_api_key_here
-export OPENAI_MODEL=gpt-5
+# OpenAI (recommended)
+python3 switch_model.py gpt4            # Use GPT-4-turbo
+python3 switch_model.py status          # Check current config
 
-# Optional: Use OpenRouter instead
-export AI_PROVIDER=openrouter
-export OPENROUTER_API_KEY=your_openrouter_key_here
-export OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
+# Or OpenRouter (free)
+python3 switch_model.py mistral         # Use Mistral (free)
+
+# Edit ~/.aweshrc for custom settings
+vi ~/.aweshrc
 ```
 
 ### 🎯 Start Using awesh
 ```bash
-# Launch awesh
-awesh
+# Launch awesh (from anywhere after deployment)
+~/.local/bin/awesh
 
 # Try these examples:
-> find all files that is recently edited
-> show me the system status
-> list all python processes
-> what's taking up disk space?
+> create a script to check all open ports
+> find all python files modified today
+> what does netstat do?
+> check disk space
+> update port to 8080 in config.py
 ```
 
 ### 🛠️ Development Workflow
 ```bash
-# Fast development cycle with Deployment MCP
-python3 deployment_mcp.py build_clean    # Build only
-python3 deployment_mcp.py deploy_only    # Deploy only
-python3 deployment_mcp.py clean_install  # Full cycle
+# Fast development cycle
+python3 simple_deploy.py full           # Kill, build, deploy, commit, push
+python3 simple_deploy.py build          # Build only
+python3 simple_deploy.py deploy         # Deploy only
+python3 simple_deploy.py test           # Run tests
+python3 simple_deploy.py kill           # Kill processes
 ```
 
 ### 🔧 Configuration
