@@ -2503,17 +2503,39 @@ int main() {
 
 void run_interactive_command(const char* cmd) {
     // For interactive commands like vi, watch, top, etc., we need to run them directly
-    // with proper TTY support. Use system() which properly handles TTY passthrough.
+    // with proper PTY support using fork/exec (not system()).
     
     if (state.verbose >= 2) {
         printf("🖥️ Running interactive command: %s\n", cmd);
     }
     
-    // system() properly handles TTY, allowing interactive programs like vi to work
-    int result = system(cmd);
+    // Save current terminal settings
+    struct termios orig_termios;
+    tcgetattr(STDIN_FILENO, &orig_termios);
     
-    if (result != 0 && state.verbose >= 1) {
-        printf("Command exited with code %d\n", WEXITSTATUS(result));
+    // Fork and exec the command directly with proper TTY
+    pid_t pid = fork();
+    if (pid == 0) {
+        // Child process - exec the command via shell
+        execl("/bin/bash", "bash", "-c", cmd, NULL);
+        perror("exec failed");
+        exit(1);
+    } else if (pid > 0) {
+        // Parent process - wait for child to complete
+        int status;
+        waitpid(pid, &status, 0);
+        
+        // Restore terminal settings (vi may have changed them)
+        tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
+        
+        if (WIFEXITED(status)) {
+            int exit_code = WEXITSTATUS(status);
+            if (exit_code != 0 && state.verbose >= 1) {
+                printf("Command exited with code %d\n", exit_code);
+            }
+        }
+    } else {
+        perror("fork failed");
     }
 }
 
