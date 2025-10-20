@@ -2036,7 +2036,30 @@ void execute_command_securely(const char* cmd) {
         return;
     }
     
-    // 2b - sandbox: send to sandbox, get result, decide routing
+    // Try to run command directly first
+    if (state.verbose >= 2) {
+        printf("🖥️ Attempting direct command execution: %s\n", cmd);
+    }
+    
+    // Try running the command directly
+    int result = system(cmd);
+    
+    // Check if command executed successfully
+    if (result == 0) {
+        // Command executed successfully - we're done
+        if (state.verbose >= 2) {
+            printf("✅ Command executed successfully\n");
+        }
+        return;
+    }
+    
+    // Command failed - check if it's an anomalous return code
+    int exit_code = WEXITSTATUS(result);
+    if (state.verbose >= 2) {
+        printf("❌ Command failed with exit code %d - sending to sandbox for validation\n", exit_code);
+    }
+    
+    // Send to sandbox for validation and routing decision
     if (state.verbose >= 2) {
         printf("DEBUG: Sandbox status - PID: %d, Running: %s\n", 
                state.sandbox_pid, 
@@ -2049,23 +2072,9 @@ void execute_command_securely(const char* cmd) {
     }
     
     if (sandbox_result == 0) {
-        // SAFE - Sandbox validation passed - execute command directly in frontend
-        if (state.verbose >= 2) {
-            printf("✅ Sandbox validation passed - executing command directly\n");
-        }
-        // Run non-interactive command with popen to capture output
-        FILE* cmd_pipe = popen(cmd, "r");
-        if (cmd_pipe) {
-            char buffer[1024];
-            while (fgets(buffer, sizeof(buffer), cmd_pipe)) {
-                printf("%s", buffer);
-            }
-            int exit_code = pclose(cmd_pipe);
-            if (exit_code != 0 && state.verbose >= 1) {
-                printf("Command failed (exit %d)\n", exit_code);
-                    }
-                } else {
-            printf("Failed to execute command\n");
+        // SAFE - Sandbox validation passed - command should have worked, show error
+        if (state.verbose >= 1) {
+            printf("❌ Command failed (exit %d)\n", exit_code);
         }
         return;
     } else if (sandbox_result == -113) {
@@ -2080,7 +2089,7 @@ void execute_command_securely(const char* cmd) {
             
             // Send to middleware and wait for response
             send_to_backend_directly(cmd);
-            } else {
+        } else {
             printf("🚫 Backend/middleware not available for AI help\n");
         }
         return;
@@ -2093,49 +2102,14 @@ void execute_command_securely(const char* cmd) {
         return;
     } else if (sandbox_result == -109) {
         // ERROR - Command not found or error (1-2 words) - show error message
-                if (state.verbose >= 1) {
+        if (state.verbose >= 1) {
             printf("❌ Command not found or error\n");
         }
         return;
     } else {
-        // Sandbox validation failed - check word count before routing to AI
+        // Sandbox validation failed - route to AI
         if (state.verbose >= 2) {
-            printf("🤖 Sandbox validation failed - checking word count before AI routing\n");
-        }
-        
-        // Count words in command
-        int word_count = 0;
-        char cmd_copy[MAX_CMD_LEN];
-        strncpy(cmd_copy, cmd, sizeof(cmd_copy) - 1);
-        cmd_copy[sizeof(cmd_copy) - 1] = '\0';
-        char* word = strtok(cmd_copy, " \t");
-        while (word && word_count < 10) {
-            word_count++;
-            word = strtok(NULL, " \t");
-        }
-        
-        if (word_count <= 2) {
-            // 1-2 words: treat as interactive command instead of AI
-            if (state.verbose >= 2) {
-                printf("🖥️ Command has %d words - treating as interactive instead of AI\n", word_count);
-            }
-            run_interactive_command(cmd);
-            return;
-        }
-        
-        // Special case: SSH commands should always be interactive regardless of word count
-        if (strncmp(cmd, "ssh", 3) == 0) {
-            if (state.verbose >= 2) {
-                printf("🖥️ SSH command detected - treating as interactive\n");
-            }
-            run_interactive_command(cmd);
-            return;
-        }
-        
-        
-        // 3+ words: route to AI
-        if (state.verbose >= 2) {
-            printf("🤖 Command has %d words - routing to backend for AI help\n", word_count);
+            printf("🤖 Sandbox validation failed - routing to backend for AI help\n");
         }
         if (backend_ready) {
             // Show thinking dots while processing
@@ -2144,7 +2118,7 @@ void execute_command_securely(const char* cmd) {
             
             // Send to middleware and wait for response
             send_to_backend_directly(cmd);
-    } else {
+        } else {
             printf("🚫 Backend/middleware not available for AI help\n");
         }
         return;
