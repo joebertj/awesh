@@ -32,6 +32,12 @@ awesh_sandbox
 awesh
 *.o
 
+# Vim swap files
+*.swp
+*.swo
+*~
+.*.swp
+
 # Temporary files
 *.tmp
 *.log
