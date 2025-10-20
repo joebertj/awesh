@@ -14,6 +14,29 @@ def log(message):
     """Log a message"""
     print(message)
 
+def install_backend():
+    """Install Python backend module"""
+    log("📦 Installing Python backend...")
+    try:
+        result = subprocess.run(
+            ["pip3", "install", "-e", "."],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        if result.returncode == 0:
+            log("✅ Backend module installed")
+            return True
+        else:
+            log(f"❌ Backend install failed: {result.stderr}")
+            return False
+    except subprocess.TimeoutExpired:
+        log("❌ Backend install timeout")
+        return False
+    except Exception as e:
+        log(f"❌ Backend install error: {e}")
+        return False
+
 def build():
     """Build awesh"""
     log("🔨 Building awesh...")
@@ -25,6 +48,11 @@ def build():
         result = subprocess.run(["make"], capture_output=True, text=True, timeout=60)
         if result.returncode == 0:
             log("✅ Build successful")
+            
+            # Install backend module after successful build
+            if not install_backend():
+                log("⚠️ Backend install failed, but C binaries built successfully")
+            
             return True
         else:
             log(f"❌ Build failed: {result.stderr}")
@@ -135,7 +163,8 @@ def main():
     if len(sys.argv) < 2:
         log("Usage: python3 simple_deploy.py [command]")
         log("Commands:")
-        log("  build       - Build awesh")
+        log("  build       - Build awesh (includes backend install)")
+        log("  install_backend - Install Python backend only")
         log("  kill        - Kill running processes")
         log("  deploy      - Deploy binaries")
         log("  commit      - Git commit and push")
@@ -146,6 +175,8 @@ def main():
     
     if command == "build":
         build()
+    elif command == "install_backend":
+        install_backend()
     elif command == "kill":
         kill_processes()
     elif command == "deploy":
