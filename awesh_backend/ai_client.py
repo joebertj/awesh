@@ -240,10 +240,10 @@ Remember: Terminal users want to execute and see results. Give them the exact co
             if model_name.startswith('gpt-5') or model_name.startswith('o1'):
                 # GPT-5 requires max_completion_tokens instead of max_tokens
                 api_params["max_completion_tokens"] = self.config.max_tokens
-                # GPT-5 supports temperature, but use conservative setting for better command generation
-                api_params["temperature"] = min(self.config.temperature, 0.7)
-                # Add top_p for better command generation
-                api_params["top_p"] = 0.9
+                # GPT-5 only supports temperature=1.0 (default value)
+                # Don't set temperature parameter - let it use the default
+                # Add top_p for better command generation (if supported)
+                # api_params["top_p"] = 0.9  # Skip for GPT-5 compatibility
             else:
                 # Other models support standard parameters
                 api_params["max_tokens"] = self.config.max_tokens
