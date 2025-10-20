@@ -2036,12 +2036,33 @@ void execute_command_securely(const char* cmd) {
         return;
     }
     
-    // Special case: vi/vim commands should always be interactive regardless of word count
-    if (strncmp(cmd, "vi ", 3) == 0 || strncmp(cmd, "vim ", 4) == 0) {
-        if (state.verbose >= 2) {
-            printf("🖥️ vi/vim command detected - treating as interactive\n");
+    // Pre-detect known interactive commands before sandbox testing
+    // These commands will hang in sandbox (non-TTY environment like Cursor agent terminals)
+    const char* interactive_commands[] = {
+        "vi ", "vim ", "nano ", "emacs ", "top", "htop", "less ", "more ",
+        "man ", "watch ", "ssh ", "telnet ", "ftp ", "python", "python3",
+        "irb", "node", "mysql", "psql", "redis-cli"
+    };
+    
+    int is_known_interactive = 0;
+    for (size_t i = 0; i < sizeof(interactive_commands) / sizeof(interactive_commands[0]); i++) {
+        if (strncmp(cmd, interactive_commands[i], strlen(interactive_commands[i])) == 0) {
+            is_known_interactive = 1;
+            break;
         }
-        printf("DEBUG: vi command detected, running interactive command: %s\n", cmd);
+    }
+    
+    // Also check for commands without arguments (like top, htop, vi, vim without args)
+    if (strcmp(cmd, "vi") == 0 || strcmp(cmd, "vim") == 0 || strcmp(cmd, "nano") == 0 ||
+        strcmp(cmd, "top") == 0 || strcmp(cmd, "htop") == 0 || strcmp(cmd, "less") == 0 ||
+        strcmp(cmd, "more") == 0) {
+        is_known_interactive = 1;
+    }
+    
+    if (is_known_interactive) {
+        if (state.verbose >= 2) {
+            printf("🖥️ Known interactive command detected - skipping sandbox: %s\n", cmd);
+        }
         run_interactive_command(cmd);
         return;
     }
@@ -2503,7 +2524,7 @@ int main() {
 
 void run_interactive_command(const char* cmd) {
     // For interactive commands like vi, watch, top, etc., we need to run them directly
-    // with proper PTY support using fork/exec (not system()).
+    // with proper TTY support using system() which handles TTY correctly.
     
     if (state.verbose >= 2) {
         printf("🖥️ Running interactive command: %s\n", cmd);
@@ -2513,29 +2534,14 @@ void run_interactive_command(const char* cmd) {
     struct termios orig_termios;
     tcgetattr(STDIN_FILENO, &orig_termios);
     
-    // Fork and exec the command directly with proper TTY
-    pid_t pid = fork();
-    if (pid == 0) {
-        // Child process - exec the command via shell
-        execl("/bin/bash", "bash", "-c", cmd, NULL);
-        perror("exec failed");
-        exit(1);
-    } else if (pid > 0) {
-        // Parent process - wait for child to complete
-        int status;
-        waitpid(pid, &status, 0);
-        
-        // Restore terminal settings (vi may have changed them)
-        tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
-        
-        if (WIFEXITED(status)) {
-            int exit_code = WEXITSTATUS(status);
-            if (exit_code != 0 && state.verbose >= 1) {
-                printf("Command exited with code %d\n", exit_code);
-            }
-        }
-    } else {
-        perror("fork failed");
+    // Use system() which properly handles TTY for interactive programs
+    int result = system(cmd);
+    
+    // Restore terminal settings (vi may have changed them)
+    tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
+    
+    if (result != 0 && state.verbose >= 1) {
+        printf("Command exited with code %d\n", WEXITSTATUS(result));
     }
 }
 
