@@ -341,7 +341,8 @@ Help the user based on this result."""
                 
                 # Check response type and handle accordingly
                 if "awesh:" in response:
-                    debug_log("Found awesh: commands in AI response")
+                    debug_log(f"Found 'awesh:' in AI response - extracting commands")
+                    debug_log(f"🔍 Response preview (first 200 chars): {response[:200]}")
                     return await self._extract_and_execute_commands(response, retry_count)
                 elif await self._contains_questions_or_options(response):
                     debug_log("Found questions/options in AI response")
@@ -451,16 +452,17 @@ Help the user based on this result."""
         import re
         
         debug_log(f"Extracting awesh: commands from AI response (retry {retry_count})")
+        debug_log(f"🔍 Full AI response (first 500 chars): {ai_response[:500]}")
         
         # Find all awesh: command patterns - match until end of line or next awesh: command
         # Use non-greedy matching to avoid capturing too much
         awesh_commands = re.findall(r'awesh:\s*([^\n]+)', ai_response, re.MULTILINE)
         
         if not awesh_commands:
-            debug_log("No awesh: commands found")
+            debug_log("No awesh: commands found - returning response as-is")
             return f"🤖 {ai_response}\n"
         
-        debug_log(f"Found {len(awesh_commands)} awesh: commands")
+        debug_log(f"Found {len(awesh_commands)} awesh: commands: {awesh_commands}")
         
         # Create stack of commands (reverse order so we pop from first to last)
         # Minimal validation - only filter out obviously broken commands
@@ -486,16 +488,29 @@ Help the user based on this result."""
         failed_commands = []
         
         # Try commands one by one until we find one that works
+        valid_executable_commands = []
         while command_stack:
             command = command_stack.pop()
-            debug_log(f"Trying command: {command}")
+            debug_log(f"🔧 Processing extracted command: '{command}'")
             
-            # Route command through security middleware for validation and execution
-            return await self._execute_command_through_security_middleware(command)
+            # Validate command doesn't look like it was mis-extracted
+            # Check if it's just a single word that might be part of explanatory text
+            command_words = command.split()
+            if len(command_words) == 1 and command_words[0].lower() in ['ok', 'yes', 'no', 'maybe', 'model', 'your', 'the', 'a', 'an', 'i']:
+                debug_log(f"⚠️ Skipping single word that looks like text: '{command}'")
+                failed_commands.append(command)
+                continue
+            
+            valid_executable_commands.append(command)
         
-        # All commands failed, try to get alternatives from AI
-        debug_log(f"All {len(failed_commands)} commands failed, requesting alternatives")
-        return await self._request_command_alternatives(failed_commands)
+        if not valid_executable_commands:
+            debug_log(f"⚠️ No valid commands found after filtering - returning AI response as-is")
+            return f"🤖 {ai_response}\n"
+        
+        # Execute the first valid command
+        command = valid_executable_commands[0]
+        debug_log(f"✅ Executing validated command: '{command}'")
+        return await self._execute_command_through_security_middleware(command)
     
     async def _execute_command_through_security_middleware(self, command: str) -> str:
         """Execute AI-suggested command through security middleware"""
@@ -510,15 +525,32 @@ Help the user based on this result."""
                 temp_path = temp_file.name
             
             try:
-                # Execute command in background and capture output
-                result = subprocess.run(
-                    command,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    cwd=self.current_dir,
-                    timeout=30  # 30 second timeout for safety
-                )
+                # Execute command - split properly to avoid shell interpretation issues
+                # Use shell=False and pass as list to avoid shell metacharacter issues
+                import shlex
+                try:
+                    # Try to parse as shell command properly
+                    cmd_parts = shlex.split(command)
+                    debug_log(f"🔧 Parsed command parts: {cmd_parts}")
+                    result = subprocess.run(
+                        cmd_parts,
+                        shell=False,  # Use shell=False for safety
+                        capture_output=True,
+                        text=True,
+                        cwd=self.current_dir,
+                        timeout=30  # 30 second timeout for safety
+                    )
+                except ValueError as parse_error:
+                    # If shlex parsing fails, fall back to shell=True but log warning
+                    debug_log(f"⚠️ shlex parsing failed for '{command}': {parse_error}, using shell=True")
+                    result = subprocess.run(
+                        command,
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        cwd=self.current_dir,
+                        timeout=30  # 30 second timeout for safety
+                    )
                 
                 # Check if command was successful
                 if result.returncode == 0:
