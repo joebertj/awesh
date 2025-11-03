@@ -351,13 +351,19 @@ This controls awesh's loop (max 10 iterations per goal).
                     
                 except Exception as e:
                     error_msg = str(e)
-                    # Check for organization verification error
+                    # For Ollama, don't fallback - fail clearly if streaming fails
+                    ai_provider = os.getenv('AI_PROVIDER', 'openai')
+                    if ai_provider == 'ollama':
+                        yield f"❌ Ollama streaming error: {e}\n"
+                        yield f"💡 Check that Ollama is running and model '{os.getenv('MODEL', self.config.model)}' is available\n"
+                        return
+                    # For other providers, check for organization verification error
                     if "organization must be verified" in error_msg.lower() or "unsupported_value" in error_msg:
                         # Fall back to non-streaming
                         pass
                     else:
                         # Other errors should be reported
-                        yield f"Error processing prompt: {e}"
+                        yield f"❌ Error processing prompt: {e}\n"
                         return
             
             # Non-streaming response (either by config or fallback)
@@ -377,18 +383,38 @@ This controls awesh's loop (max 10 iterations per goal).
                 api_params_nonstream["temperature"] = self.config.temperature
             
             debug_log(f"Using non-streaming request with model {model_name}")
-            response = await self.client.chat.completions.create(**api_params_nonstream)
-            
-            content = response.choices[0].message.content
-            debug_log(f"Non-streaming response length: {len(content) if content else 0} chars")
-            if content:
-                debug_log(f"Non-streaming preview: '{content[:100]}...'")
-                yield content
-            else:
-                debug_log("❌ Non-streaming response is empty!")
+            try:
+                response = await self.client.chat.completions.create(**api_params_nonstream)
+                
+                content = response.choices[0].message.content
+                debug_log(f"Non-streaming response length: {len(content) if content else 0} chars")
+                if content:
+                    debug_log(f"Non-streaming preview: '{content[:100]}...'")
+                    yield content
+                else:
+                    ai_provider = os.getenv('AI_PROVIDER', 'openai')
+                    if ai_provider == 'ollama':
+                        yield f"❌ Ollama returned empty response\n"
+                        yield f"💡 Check that model '{model_name}' is available: ollama list\n"
+                    else:
+                        debug_log("❌ Non-streaming response is empty!")
+                        yield "❌ Empty response from AI\n"
+            except Exception as e:
+                ai_provider = os.getenv('AI_PROVIDER', 'openai')
+                if ai_provider == 'ollama':
+                    yield f"❌ Ollama error: {e}\n"
+                    yield f"💡 Verify Ollama is running: curl http://localhost:11434/api/tags\n"
+                    yield f"💡 Verify model '{model_name}' exists: ollama list\n"
+                else:
+                    yield f"❌ Error processing prompt: {e}\n"
                     
         except Exception as e:
-            yield f"Error processing prompt: {e}"
+            ai_provider = os.getenv('AI_PROVIDER', 'openai')
+            if ai_provider == 'ollama':
+                yield f"❌ Ollama request failed: {e}\n"
+                yield f"💡 Check Ollama status and model availability\n"
+            else:
+                yield f"❌ Error processing prompt: {e}\n"
             
     def _format_context(self, context: Dict[str, Any]) -> str:
         """Format context information for the AI"""

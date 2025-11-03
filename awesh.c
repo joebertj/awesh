@@ -1392,9 +1392,11 @@ void send_command(const char* cmd) {
             fflush(stdout);
             dots_shown++;
             
-            // Stop after 64 dots (5+ minutes)
-            if (dots_shown >= 64) {
-                printf("\nBackend timeout - no response\n");
+            // Stop after longer timeout for Ollama (120 dots = 10 minutes), shorter for others (64 dots = ~5.3 minutes)
+            const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
+            int max_dots = (strcmp(ai_provider, "ollama") == 0) ? 120 : 64;
+            if (dots_shown >= max_dots) {
+                printf("\n❌ Backend timeout - no response after %d minutes\n", max_dots * 5 / 60);
                 return;
             }
         } else {

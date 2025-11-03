@@ -297,8 +297,11 @@ Help the user based on this result."""
                     debug_log(f"Total chunks: {chunk_count}, total length: {len(result)}")
                     return result
                 
-                debug_log("Calling collect_response with timeout")
-                response = await asyncio.wait_for(collect_response(), timeout=300)  # 5 minutes
+                # Use longer timeout for local Ollama (10 minutes), shorter for API providers (5 minutes)
+                ai_provider = os.getenv('AI_PROVIDER', 'openai')
+                timeout_seconds = 600 if ai_provider == 'ollama' else 300  # 10 min for Ollama, 5 min for others
+                debug_log(f"Calling collect_response with timeout: {timeout_seconds}s (provider: {ai_provider})")
+                response = await asyncio.wait_for(collect_response(), timeout=timeout_seconds)
                 debug_log(f"Got response: {len(response)} chars")
                 
                 # Check for file edits first
@@ -316,7 +319,10 @@ Help the user based on this result."""
                     debug_log("🔄 Retrying AI request...")
                     
                     try:
-                        retry_response = await asyncio.wait_for(collect_response(), timeout=300)
+                        # Use same timeout as initial request
+                        ai_provider = os.getenv('AI_PROVIDER', 'openai')
+                        timeout_seconds = 600 if ai_provider == 'ollama' else 300
+                        retry_response = await asyncio.wait_for(collect_response(), timeout=timeout_seconds)
                         debug_log(f"Retry response: {len(retry_response)} chars")
                         
                         if retry_response and len(retry_response.strip()) > 0:
@@ -446,8 +452,9 @@ Help the user based on this result."""
         
         debug_log(f"Extracting awesh: commands from AI response (retry {retry_count})")
         
-        # Find all awesh: command patterns
-        awesh_commands = re.findall(r'awesh:\s*(.+)', ai_response)
+        # Find all awesh: command patterns - match until end of line or next awesh: command
+        # Use non-greedy matching to avoid capturing too much
+        awesh_commands = re.findall(r'awesh:\s*([^\n]+)', ai_response, re.MULTILINE)
         
         if not awesh_commands:
             debug_log("No awesh: commands found")
@@ -456,7 +463,26 @@ Help the user based on this result."""
         debug_log(f"Found {len(awesh_commands)} awesh: commands")
         
         # Create stack of commands (reverse order so we pop from first to last)
-        command_stack = [cmd.strip() for cmd in reversed(awesh_commands)]
+        # Minimal validation - only filter out obviously broken commands
+        valid_commands = []
+        for cmd in awesh_commands:
+            cmd = cmd.strip()
+            # Skip if command is empty or too short
+            if len(cmd) < 1:
+                debug_log(f"Skipping empty command")
+                continue
+            # Only filter if it looks like a filename pattern (no shell operators and has / but not a valid path)
+            if '/' in cmd and not any(char in cmd for char in [' ', '|', '>', '<', '&', ';', '(', ')', '$', '`']):
+                if not any(word in cmd.lower() for word in ['bin/', 'usr/', 'etc/', 'tmp/', 'var/', 'home/', 'opt/', './', '/']):
+                    debug_log(f"Skipping invalid command (looks like filename): '{cmd}'")
+                    continue
+            valid_commands.append(cmd)
+        
+        if not valid_commands:
+            debug_log("No valid awesh: commands found after filtering")
+            return f"🤖 {ai_response}\n"
+        
+        command_stack = [cmd for cmd in reversed(valid_commands)]
         failed_commands = []
         
         # Try commands one by one until we find one that works
@@ -664,8 +690,9 @@ awesh: <command>"""
         
         debug_log(f"🔍 Extracting commands from option {option_number} response (retry {retry_count})")
         
-        # Find all awesh: command patterns
-        awesh_commands = re.findall(r'awesh:\s*(.+)', ai_response)
+        # Find all awesh: command patterns - match until end of line or next awesh: command
+        # Use non-greedy matching to avoid capturing too much
+        awesh_commands = re.findall(r'awesh:\s*([^\n]+)', ai_response, re.MULTILINE)
         
         if not awesh_commands:
             debug_log(f"❌ No awesh: commands found in option {option_number} response")
