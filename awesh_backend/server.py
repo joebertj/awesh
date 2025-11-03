@@ -395,10 +395,13 @@ Help the user based on this result."""
                 output += "\n➡️  Next steps:\n"
                 for filepath in created_files:
                     filename = filepath.split('/')[-1]
-                    output += (
-                        f"   • Run with sh: sh {filename}\n"
-                        f"   • Or make executable: chmod +x {filename} && ./{filename}\n"
-                    )
+                    # Add a one-shot execution line for convenience
+                    output += f"   • Run now: sh {filename}\n"
+                    output += f"   • Or make executable: chmod +x {filename} && ./{filename}\n"
+
+            # If no file edits but AI claims success, add guidance
+            if success_count == 0 and "✅" in output:
+                output += "\nℹ️  If a script was created, you can run it with: sh <script.sh>\n"
             
             # Include original AI response if there's additional context
             if '```' not in ai_response or len(ai_response.split('```')[0].strip()) > 10:
@@ -756,7 +759,7 @@ awesh: <command>"""
                     elif command.startswith("AI_PROVIDER:"):
                         # Switch AI provider dynamically
                         provider = command.split(":", 1)[1].strip()
-                        if provider in ["openai", "openrouter"]:
+                        if provider in ["openai", "openrouter", "ollama"]:
                             # Update config and reinitialize AI client
                             self.config.ai_provider = provider
                             response = f"🤖 Switching to {provider}... (restart awesh to take effect)\n"

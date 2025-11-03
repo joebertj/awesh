@@ -14,12 +14,28 @@ def log(message):
     """Log a message"""
     print(message)
 
+def get_venv_python():
+    """Get the venv python path"""
+    venv_python = Path("venv") / "bin" / "python3"
+    if venv_python.exists():
+        return str(venv_python.resolve())
+    return None
+
 def install_backend():
-    """Install Python backend module"""
+    """Install Python backend module in venv"""
     log("📦 Installing Python backend...")
     try:
+        # Use venv python if available, otherwise use system python3
+        venv_python = get_venv_python()
+        python_cmd = venv_python if venv_python else "python3"
+        
+        if venv_python:
+            log(f"Using venv: {venv_python}")
+        else:
+            log("No venv found, using system python3")
+        
         result = subprocess.run(
-            ["pip3", "install", "-e", "."],
+            [python_cmd, "-m", "pip", "install", "-e", "."],
             capture_output=True,
             text=True,
             timeout=120
@@ -138,8 +154,12 @@ def run_tests():
     """Run comprehensive test suite"""
     log("🧪 Running awesh test suite...")
     try:
+        # Use venv python if available
+        venv_python = get_venv_python()
+        python_cmd = venv_python if venv_python else sys.executable
+        
         result = subprocess.run(
-            [sys.executable, "tests/test_awesh.py"],
+            [python_cmd, "tests/test_awesh.py"],
             capture_output=True,
             text=True,
             timeout=120

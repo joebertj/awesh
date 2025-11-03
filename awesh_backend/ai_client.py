@@ -40,7 +40,7 @@ class AweshAIClient:
             debug_log("Importing AsyncOpenAI...")
             from openai import AsyncOpenAI
             
-        # Initialize OpenAI client (supports OpenRouter)
+        # Initialize OpenAI client (supports OpenRouter, Ollama)
         ai_provider = os.getenv('AI_PROVIDER', 'openai')
         debug_log(f"AI Provider: {ai_provider}")
         debug_log(f"Model from config: {self.config.model}")
@@ -58,6 +58,28 @@ class AweshAIClient:
                 base_url=base_url
             )
             debug_log("OpenRouter client created successfully")
+        elif ai_provider == 'ollama':
+            # Using local Ollama
+            base_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434/v1')
+            api_key = os.getenv('OLLAMA_API_KEY', 'ollama')  # Ollama doesn't require a key, but some setups use it
+            debug_log(f"Creating Ollama client with base_url: {base_url}")
+            self.client = AsyncOpenAI(
+                api_key=api_key,  # Ollama typically doesn't require a real key
+                base_url=base_url
+            )
+            debug_log("Ollama client created successfully")
+        elif ai_provider == 'perplexity':
+            # Using Perplexity
+            api_key = os.getenv('PERPLEXITY_API_KEY')
+            if not api_key:
+                raise ValueError("PERPLEXITY_API_KEY environment variable not set")
+            base_url = os.getenv('PERPLEXITY_BASE_URL', 'https://api.perplexity.ai')
+            debug_log(f"Creating Perplexity client with base_url: {base_url}")
+            self.client = AsyncOpenAI(
+                api_key=api_key,
+                base_url=base_url
+            )
+            debug_log("Perplexity client created successfully")
         else:
             # Using standard OpenAI
             api_key = os.getenv('OPENAI_API_KEY')
@@ -160,6 +182,12 @@ THREE response modes based on user intent:
    The file will be created/edited automatically with backup.
    Use for: create script, update config, fix code, write file, etc.
 
+   When creating scripts:
+   - Always make the script print/output results (e.g., echo "$var")
+   - Use portable POSIX sh if possible (#!/bin/sh)
+   - Prefer non-interactive commands
+   - After the edit block, include a single awesh: line to run the script now
+
 3. **NORMAL MODE** - User wants information:
    Plain text response with clear, concise information.
    
@@ -172,12 +200,17 @@ You:
 ```edit:check_ports.sh
 <<<<<<< OLD
 =======
-#!/bin/bash
-# Check all open listening ports
-sudo netstat -tlnp 2>/dev/null | grep LISTEN
-sudo ss -tulpn | grep LISTEN
+#!/bin/sh
+# Check all open listening ports (comma-separated)
+open_ports=$(netstat -tuln 2>/dev/null | awk '/^tcp|^udp/ {print $4}' | sed 's/.*://g' | sort -un | paste -sd, -)
+echo "$open_ports"
 >>>>>>> NEW
 ```
+awesh: sh check_ports.sh
+
+➡️  Next steps:
+- Run once: sh check_ports.sh
+- Or make executable and run: chmod +x check_ports.sh && ./check_ports.sh
 
 User: "find large files over 100MB"
 You: awesh: find . -type f -size +100M -exec ls -lh {} \;

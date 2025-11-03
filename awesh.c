@@ -906,6 +906,8 @@ void handle_ai_mode_detection(const char* input) {
 void load_config() {
     // Read ~/.aweshrc for configuration (primary config file)
     char config_path[512];
+    char config_model[256] = "";  // Store MODEL from config file
+    
     snprintf(config_path, sizeof(config_path), "%s/.aweshrc", getenv("HOME"));
     
     FILE *file = fopen(config_path, "r");
@@ -930,10 +932,14 @@ void load_config() {
             state.verbose = atoi(value);  // Parse as integer: 0=silent, 1=show AI status+debug, 2+=more verbose
         }
         
-        // Set all config values as environment variables for backend (except MODEL)
-        if (strcmp(key, "MODEL") != 0) {
-        setenv(key, value, 1);
-    }
+        // Store MODEL from config file separately
+        if (strcmp(key, "MODEL") == 0) {
+            strncpy(config_model, value, sizeof(config_model) - 1);
+            config_model[sizeof(config_model) - 1] = '\0';
+        } else {
+            // Set all other config values as environment variables for backend
+            setenv(key, value, 1);
+        }
     }
         fclose(file);
     } else {
@@ -961,8 +967,12 @@ void load_config() {
             state.verbose = atoi(value);  // Parse as integer: 0=silent, 1=show AI status+debug, 2+=more verbose
         }
         
-        // Set all config values as environment variables for backend (except MODEL)
-        if (strcmp(key, "MODEL") != 0) {
+        // Store MODEL from config file separately
+        if (strcmp(key, "MODEL") == 0) {
+            strncpy(config_model, value, sizeof(config_model) - 1);
+            config_model[sizeof(config_model) - 1] = '\0';
+        } else {
+            // Set all other config values as environment variables for backend
             setenv(key, value, 1);
         }
             }
@@ -970,11 +980,19 @@ void load_config() {
         }
     }
     
-    // Set default MODEL based on AI provider (after config is loaded)
-    if (!getenv("MODEL")) {
+    // Set MODEL from config file if present, otherwise set default based on AI provider
+    if (config_model[0] != '\0') {
+        // Use MODEL from config file
+        setenv("MODEL", config_model, 1);
+    } else if (!getenv("MODEL")) {
+        // Set default MODEL based on AI provider (after config is loaded)
         const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openrouter";
         if (strcmp(ai_provider, "openrouter") == 0) {
             setenv("MODEL", "mistralai/mistral-small-3.1-24b-instruct:free", 1);  // Default OpenRouter Mistral model
+        } else if (strcmp(ai_provider, "ollama") == 0) {
+            setenv("MODEL", "llama3.2", 1);  // Default Ollama model (common local model)
+        } else if (strcmp(ai_provider, "perplexity") == 0) {
+            setenv("MODEL", "sonar", 1);  // Default Perplexity model
         } else {
             setenv("MODEL", "gpt-4-turbo", 1);  // Default OpenAI model
         }
@@ -1423,6 +1441,52 @@ int is_awesh_command(const char* cmd) {
             strncmp(cmd, "awem", 4) == 0);
 }
 
+// Get list of available Ollama models
+int get_ollama_models(char* models, size_t models_size) {
+    if (!models || models_size == 0) {
+        return 0;
+    }
+    
+    models[0] = '\0';  // Initialize buffer
+    
+    FILE* fp = popen("ollama list 2>/dev/null", "r");
+    if (!fp) {
+        return 0;  // Ollama not available
+    }
+    
+    char line[256];
+    int model_count = 0;
+    
+    // Skip header line
+    if (fgets(line, sizeof(line), fp) == NULL) {
+        pclose(fp);
+        return 0;
+    }
+    
+    // Read model names (first column)
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        // Parse first column (model name)
+        char model_name[128];
+        if (sscanf(line, "%127s", model_name) == 1) {
+            size_t current_len = strlen(models);
+            size_t remaining = models_size - current_len - 1;
+            
+            if (model_count > 0 && remaining > 2) {
+                strncat(models, ", ", remaining);
+                remaining -= 2;
+            }
+            
+            if (remaining > strlen(model_name)) {
+                strncat(models, model_name, remaining);
+                model_count++;
+            }
+        }
+    }
+    
+    pclose(fp);
+    return model_count;
+}
+
 
 void handle_awesh_command(const char* cmd) {
     if (strcmp(cmd, "aweh") == 0) {
@@ -1441,12 +1505,15 @@ void handle_awesh_command(const char* cmd) {
         printf("  awea              Show current AI provider and model\n");
         printf("  awea openai       Switch to OpenAI\n");
         printf("  awea openrouter   Switch to OpenRouter\n");
+        printf("  awea ollama       Switch to Ollama (local models)\n");
+        printf("  awea perplexity   Switch to Perplexity\n");
         printf("\n📋 Model:\n");
         printf("  awem              Show current model and supported models\n");
         printf("  awem gpt-4        Set model to GPT-4 (OpenAI)\n");
         printf("  awem gpt-5        Set model to GPT-5 (OpenAI)\n");
         printf("  awem kimi-k2      Set model to Kimi K2 (OpenRouter)\n");
         printf("  awem claude-sonnet Set model to Claude Sonnet (OpenRouter)\n");
+        printf("  awem <name>       Set any Ollama model (e.g., awem llama3.2)\n");
         printf("\n💡 All commands use 'awe' prefix to avoid bash conflicts\n");
     } else if (strcmp(cmd, "awes") == 0) {
         const char* ai_provider = getenv("AI_PROVIDER") ? getenv("AI_PROVIDER") : "openai";
@@ -1539,8 +1606,18 @@ void handle_awesh_command(const char* cmd) {
             update_config_file("AI_PROVIDER", "openrouter");
             send_command("AI_PROVIDER:openrouter");
             printf("🤖 Switching to OpenRouter... (restart awesh to take effect)\n");
+        } else if (strcmp(cmd, "awea ollama") == 0) {
+            // Switch to Ollama
+            update_config_file("AI_PROVIDER", "ollama");
+            send_command("AI_PROVIDER:ollama");
+            printf("🤖 Switching to Ollama... (restart awesh to take effect)\n");
+        } else if (strcmp(cmd, "awea perplexity") == 0) {
+            // Switch to Perplexity
+            update_config_file("AI_PROVIDER", "perplexity");
+            send_command("AI_PROVIDER:perplexity");
+            printf("🤖 Switching to Perplexity... (restart awesh to take effect)\n");
         } else {
-            printf("Usage: awea [openai|openrouter]\n");
+            printf("Usage: awea [openai|openrouter|ollama|perplexity]\n");
         }
     } else if (strncmp(cmd, "awem", 4) == 0) {
         // Parse awem command and arguments
@@ -1557,6 +1634,30 @@ void handle_awesh_command(const char* cmd) {
             printf("\n🔹 OpenRouter Models:\n");
             printf("  • kimi-k2       - Kimi K2 (fast, efficient)\n");
             printf("  • claude-sonnet - Claude Sonnet (reasoning, analysis)\n");
+            printf("\n🔹 Perplexity Models:\n");
+            printf("  • sonar         - Sonar (fast, efficient)\n");
+            printf("  • sonar-pro     - Sonar Pro (advanced, latest)\n");
+            
+            // Dynamically fetch Ollama models if Ollama is available
+            printf("\n🔹 Ollama Models:\n");
+            char ollama_models[512] = "";
+            int model_count = get_ollama_models(ollama_models, sizeof(ollama_models));
+            if (model_count > 0) {
+                // Parse and display models nicely (strtok modifies string, so we need a copy)
+                char models_copy[512];
+                strncpy(models_copy, ollama_models, sizeof(models_copy) - 1);
+                models_copy[sizeof(models_copy) - 1] = '\0';
+                char* token = strtok(models_copy, ", ");
+                while (token != NULL) {
+                    printf("  • %s\n", token);
+                    token = strtok(NULL, ", ");
+                }
+                printf("  💡 Use: awem <model-name> to switch\n");
+            } else {
+                printf("  ⚠️  Ollama not available or no models installed\n");
+                printf("  💡 Install: ollama pull <model-name>\n");
+            }
+            
             printf("\n💡 Current Provider: %s\n", ai_provider);
             printf("💡 Switch models with: awem <model-name>\n");
         } else if (strcmp(cmd, "awem gpt-4") == 0) {
@@ -1579,6 +1680,37 @@ void handle_awesh_command(const char* cmd) {
             setenv("MODEL", "claude-sonnet", 1);
             send_command("MODEL:claude-sonnet");
             printf("📋 Model switched to Claude Sonnet (OpenRouter) ✅\n");
+        } else if (strcmp(cmd, "awem sonar") == 0) {
+            // Set model to Sonar
+            setenv("MODEL", "sonar", 1);
+            update_config_file("MODEL", "sonar");
+            send_command("MODEL:sonar");
+            printf("📋 Model switched to sonar (Perplexity) ✅\n");
+        } else if (strcmp(cmd, "awem sonar-pro") == 0) {
+            // Set model to Sonar Pro
+            setenv("MODEL", "sonar-pro", 1);
+            update_config_file("MODEL", "sonar-pro");
+            send_command("MODEL:sonar-pro");
+            printf("📋 Model switched to sonar-pro (Perplexity) ✅\n");
+        } else if (strncmp(cmd, "awem llama3.2", 13) == 0 || strncmp(cmd, "awem llama", 9) == 0) {
+            // Set model to Llama 3.2 (Ollama)
+            setenv("MODEL", "llama3.2", 1);
+            update_config_file("MODEL", "llama3.2");
+            send_command("MODEL:llama3.2");
+            printf("📋 Model switched to llama3.2 (Ollama) ✅\n");
+        } else if (strlen(cmd) > 5 && strncmp(cmd, "awem ", 5) == 0) {
+            // Generic model setter - allow any model name (for Ollama and others)
+            const char* model_name = cmd + 5;  // Skip "awem "
+            if (strlen(model_name) > 0) {
+                char model_cmd[256];
+                snprintf(model_cmd, sizeof(model_cmd), "MODEL:%s", model_name);
+                setenv("MODEL", model_name, 1);
+                update_config_file("MODEL", model_name);
+                send_command(model_cmd);
+                printf("📋 Model switched to %s ✅\n", model_name);
+            } else {
+                printf("💡 Usage: awem [model-name]\n");
+            }
         } else {
             // Extract model name from command for validation
             char* model_name = strchr(cmd, ' ');
@@ -1586,8 +1718,8 @@ void handle_awesh_command(const char* cmd) {
                 model_name++; // Skip the space
                 printf("❌ Unsupported model: %s\n", model_name);
             }
-            printf("🤖 Supported models: gpt-4, gpt-5, kimi-k2, claude-sonnet\n");
-            printf("💡 Usage: awem [gpt-4|gpt-5|kimi-k2|claude-sonnet]\n");
+            printf("🤖 Supported models: gpt-4, gpt-5, kimi-k2, claude-sonnet, llama3.2, gpt-oss:latest, <any-ollama-model>\n");
+            printf("💡 Usage: awem [gpt-4|gpt-5|kimi-k2|claude-sonnet|llama3.2|gpt-oss:latest|<any-model>]\n");
         }
     }
 }

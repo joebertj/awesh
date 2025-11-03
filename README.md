@@ -94,7 +94,7 @@ awev on/off                 # Enable/disable verbose
 *"AI by default, Bash when I mean Bash"*
 
 **💎 Naming Inspiration:**
-awesh draws its name from my eldest daughter, **Awit Perl** - where "Awit" means "Psalm" in Filipino, representing both "Awe" and "Wit," while "Perl" means "Pearl" (still more OG than the Python we have today). This shell embodies the same wonder and wisdom that inspired its creation.
+awesh draws its name from my eldest daughter, **Awit Perl** - where "Awit" means "Psalm" in Filipino, representing both "Awe" and "Wit," while "Perl" refers to the PERL programming language (still more OG than the Python we have today). This shell embodies the same wonder and wisdom that inspired its creation.
 
 An intelligent shell that seamlessly blends natural language AI interaction with traditional command-line operations. **Built by Ops, for Ops** - designed for systems administrators, DevOps engineers, and infrastructure professionals who live in the terminal.
 
