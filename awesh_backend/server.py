@@ -63,6 +63,11 @@ class AweshSocketBackend:
         # Initialize TODO agent
         self.todo_agent = get_todo_agent()
         
+        # Initialize response agent (coordinates other agents)
+        # Agent hierarchy: Response Agent → File Editor / Execution / File / TODO / Shell (C-based)
+        from awesh_backend.response_agent import get_response_agent
+        self.response_agent = get_response_agent(self.file_editor, self.execution_agent)
+        
     async def initialize(self):
         """Initialize AI components"""
         try:
@@ -342,19 +347,19 @@ Help the user based on this result."""
                 # Show first part of response for debugging
                 debug_log(f"AI response preview: '{response[:100]}{'...' if len(response) > 100 else ''}'")
                 
-                # Check response type and handle accordingly
-                if "awesh:" in response:
-                    debug_log(f"Found 'awesh:' in AI response - extracting commands")
-                    debug_log(f"🔍 Response preview (first 200 chars): {response[:200]}")
-                    return await self._extract_and_execute_commands(response, retry_count)
-                elif await self._contains_questions_or_options(response):
-                    debug_log("Found questions/options in AI response")
-                    return await self._handle_ai_questions(response, retry_count)
+                # NEW FLOW: Use response agent to process AI response
+                # Response agent will delegate to appropriate agents (File Editor, Execution Agent, etc.)
+                debug_log("Delegating response processing to response agent")
+                processed_output, was_processed = await self.response_agent.process_response(response)
+                
+                if was_processed:
+                    # Agent handled it - return processed output
+                    debug_log("Response agent processed the response")
+                    return processed_output
                 else:
-                    debug_log("Regular AI response, returning as-is")
-                    output += response
-                    output += "\n"
-                    return output
+                    # No special processing - display as-is
+                    debug_log("Response agent determined response should be displayed as-is")
+                    return processed_output + "\n"
             except asyncio.TimeoutError:
                 return f"❌ AI response timeout - request took too long\n"
             except Exception as stream_error:
@@ -480,6 +485,161 @@ Help the user based on this result."""
         
         return response
     
+    def _has_explicit_awesh_commands(self, response: str) -> bool:
+        """Check if response contains explicit 'awesh:' commands on their own lines (not in code blocks)"""
+        import re
+        lines = response.split('\n')
+        in_code_block = False
+        for line in lines:
+            stripped = line.strip()
+            # Track code blocks
+            if stripped.startswith('```'):
+                in_code_block = not in_code_block
+                continue
+            # Skip code blocks and comments
+            if in_code_block or stripped.startswith('#'):
+                continue
+            # Match "awesh:" at start of line (after optional whitespace)
+            if re.match(r'^\s*awesh:\s*(.+)$', line):
+                debug_log(f"Found explicit awesh: command on line: '{line[:50]}'")
+                return True
+        return False
+    
+    def _extract_code_blocks(self, response: str) -> list:
+        """Extract code blocks from response that might need to be written to files"""
+        import re
+        code_blocks = []
+        # Pattern: ```language or ```filename or ``` (optional language/filename on first line)
+        pattern = r'```(?:(\w+)|([^\n]+))?\n(.*?)```'
+        matches = re.finditer(pattern, response, re.DOTALL)
+        for match in matches:
+            language_or_file = match.group(1) or match.group(2) or ""
+            code = match.group(3).strip()
+            if code and len(code) > 10:  # Only consider substantial code blocks
+                code_blocks.append({
+                    'language': language_or_file,
+                    'content': code,
+                    'full_match': match.group(0)
+                })
+                debug_log(f"Extracted code block: language={language_or_file}, size={len(code)} chars")
+        return code_blocks
+    
+    async def _handle_code_blocks_as_file_edits(self, code_blocks: list) -> str:
+        """Convert code blocks to file edit format and use file editor to write them"""
+        if not code_blocks:
+            return ""
+        
+        from awesh_backend.file_editor import FileEdit
+        
+        # Convert code blocks to FileEdit objects
+        edits = []
+        
+        for i, block in enumerate(code_blocks):
+            lang = block['language'].strip() if block['language'] else ""
+            content = block['content']
+            
+            # Check if it looks like file content (has shebang, looks like script, or has substantial code)
+            has_shebang = content.startswith('#!')
+            looks_like_script = has_shebang or lang in ['sh', 'bash', 'python', 'py', 'js', 'javascript', 'rb', 'ruby', 'go', 'rs', 'c', 'cpp', 'java', 'php']
+            is_substantial = len(content) > 20 and not content.strip().startswith('#')  # Not just a comment
+            
+            # Only process if it looks like standalone file content
+            if not (looks_like_script or is_substantial):
+                continue
+            
+            # Determine filename
+            filename = None
+            if has_shebang:
+                # Try to infer filename from shebang and content
+                if 'python' in content[:100].lower() or lang in ['python', 'py']:
+                    filename = f"script_{i+1}.py"
+                elif 'bash' in content[:100].lower() or 'sh' in content[:100].lower() or lang in ['bash', 'sh']:
+                    filename = f"script_{i+1}.sh"
+                elif 'node' in content[:100].lower() or lang in ['js', 'javascript']:
+                    filename = f"script_{i+1}.js"
+                else:
+                    filename = f"script_{i+1}"
+            elif lang:
+                # Use language as extension
+                extension_map = {
+                    'python': 'py', 'py': 'py',
+                    'bash': 'sh', 'sh': 'sh', 'shell': 'sh',
+                    'javascript': 'js', 'js': 'js',
+                    'typescript': 'ts', 'ts': 'ts',
+                    'go': 'go', 'golang': 'go',
+                    'rust': 'rs',
+                    'c': 'c', 'cpp': 'cpp', 'c++': 'cpp',
+                    'java': 'java',
+                    'ruby': 'rb', 'rb': 'rb',
+                    'php': 'php',
+                    'json': 'json',
+                    'yaml': 'yaml', 'yml': 'yaml',
+                    'html': 'html',
+                    'css': 'css',
+                    'markdown': 'md', 'md': 'md',
+                }
+                ext = extension_map.get(lang.lower(), 'txt')
+                filename = f"script_{i+1}.{ext}"
+            else:
+                # Try to infer from content or use generic
+                if content.startswith('#!/'):
+                    filename = f"script_{i+1}.sh"
+                else:
+                    filename = f"script_{i+1}.txt"
+            
+            if filename:
+                # Create file edit (empty OLD means new file) - use file editor's format
+                edit = FileEdit(
+                    file_path=filename,
+                    old_content="",  # Empty means create new file
+                    new_content=content
+                )
+                edits.append(edit)
+                debug_log(f"Converted code block {i+1} to file edit: {filename}")
+        
+        if not edits:
+            return ""
+        
+        # Use file editor to apply edits
+        try:
+            results = self.file_editor.apply_multiple_edits(edits)
+            
+            # Format response similar to _handle_file_edits
+            output_lines = []
+            success_count = 0
+            created_files = []
+            
+            for result in results:
+                if result.success:
+                    success_count += 1
+                    output_lines.append(f"✅ {result.message}")
+                    if result.backup_path:
+                        output_lines.append(f"   Backup: {result.backup_path}")
+                    if "Successfully created" in result.message:
+                        created_files.append(result.file_path)
+                else:
+                    output_lines.append(f"❌ {result.message}")
+            
+            if output_lines:
+                header = f"📝 Created {success_count}/{len(results)} file(s) from code blocks:"
+                output_lines.insert(0, header)
+                
+                # Add helpful follow-up for newly created scripts
+                if created_files:
+                    output_lines.append("")
+                    output_lines.append("➡️  Next steps:")
+                    for filepath in created_files:
+                        filename = filepath.split('/')[-1]
+                        output_lines.append(f"   • Run: sh {filename}")
+                        output_lines.append(f"   • Or make executable: chmod +x {filename} && ./{filename}")
+                
+                return "\n".join(output_lines)
+        except Exception as e:
+            debug_log(f"Error applying file edits from code blocks: {e}")
+            return f"⚠️ Error creating files from code blocks: {e}"
+        
+        return ""
+    
     async def _extract_and_execute_commands(self, ai_response: str, retry_count: int = 0) -> str:
         """Extract awesh: commands from AI response and execute them using stack approach"""
         import re
@@ -491,30 +651,48 @@ Help the user based on this result."""
         # but double-check here in case it wasn't cleaned upstream
         cleaned_response = self._clean_ollama_thinking(ai_response)
         
-        # Find all awesh: command patterns - must be on their own line or clearly marked
-        # Look for "awesh:" followed by command on same line, not in the middle of text
-        # Pattern: awesh: followed by whitespace and then command (capture until newline or end)
-        awesh_commands = re.findall(r'^awesh:\s*([^\n]+)$|awesh:\s*([^\n]+)', cleaned_response, re.MULTILINE)
+        # Find all awesh: command patterns - must be clearly formatted on their own line
+        # Only match "awesh:" at start of line (after optional whitespace) to avoid false matches
+        # Pattern: start of line, optional whitespace, "awesh:", whitespace, then command until newline
+        # Exclude matches inside code blocks (lines starting with # or in ``` blocks)
+        lines = cleaned_response.split('\n')
+        awesh_commands = []
+        in_code_block = False
+        for line in lines:
+            stripped = line.strip()
+            # Track code blocks
+            if stripped.startswith('```'):
+                in_code_block = not in_code_block
+                continue
+            # Skip code blocks and comments
+            if in_code_block or stripped.startswith('#'):
+                continue
+            # Match "awesh:" at start (after optional whitespace)
+            # Must be a clear command, not just text
+            match = re.match(r'^\s*awesh:\s*(.+)$', line)
+            if match:
+                cmd = match.group(1).strip()
+                # Skip if command is empty, just whitespace, or starts with comment
+                if cmd and not cmd.startswith('#') and len(cmd) > 0:
+                    # Skip single words that might be part of explanatory text
+                    # Commands should have at least 2 words or be shell-like
+                    words = cmd.split()
+                    if len(words) >= 2 or any(char in cmd for char in ['/', '|', '&', ';', '(', ')', '{', '}', '$', '`']):
+                        awesh_commands.append(cmd)
+                        debug_log(f"Found awesh: command on line: '{cmd}'")
+                    else:
+                        debug_log(f"Skipping single word (likely explanatory text): '{cmd}'")
         
-        # Flatten the tuples from the regex groups
-        extracted_commands = []
-        for match in awesh_commands:
-            # regex returns tuple of (group1, group2) - get the non-empty one
-            cmd = match[0] if match[0] else match[1]
-            if cmd and cmd.strip():
-                extracted_commands.append(cmd.strip())
+        if not awesh_commands:
+            debug_log("No awesh: commands found in cleaned response")
+            return ""  # Return empty - response already displayed to user
         
-        if not extracted_commands:
-            debug_log("No awesh: commands found - returning response as-is")
-            # Return cleaned response (without thinking process) if no commands
-            return f"🤖 {cleaned_response}\n"
-        
-        debug_log(f"Found {len(extracted_commands)} awesh: commands: {extracted_commands}")
+        debug_log(f"Found {len(awesh_commands)} awesh: commands on separate lines: {awesh_commands}")
         
         # Create stack of commands (reverse order so we pop from first to last)
         # Minimal validation - only filter out obviously broken commands
         valid_commands = []
-        for cmd in extracted_commands:
+        for cmd in awesh_commands:
             cmd = cmd.strip()
             # Skip if command is empty or too short
             if len(cmd) < 1:
@@ -528,8 +706,8 @@ Help the user based on this result."""
             valid_commands.append(cmd)
         
         if not valid_commands:
-            debug_log("No valid awesh: commands found after filtering")
-            return f"🤖 {ai_response}\n"
+            debug_log("No valid awesh: commands found after filtering - response already displayed")
+            return ""  # Return empty - response already displayed to user
         
         command_stack = [cmd for cmd in reversed(valid_commands)]
         failed_commands = []
@@ -560,8 +738,35 @@ Help the user based on this result."""
         return await self._execute_command_through_security_middleware(command)
     
     async def _execute_command_through_security_middleware(self, command: str) -> str:
-        """Execute AI-suggested command through security middleware"""
-        debug_log(f"Executing AI command through security middleware: {command}")
+        """
+        Execute AI-suggested command through Execution Agent → Shell Agent (C-based Sandbox)
+        
+        NOTE: This method is kept for backward compatibility but should be replaced
+        by direct use of ResponseAgent which properly routes through Execution Agent.
+        
+        Agent flow: ResponseAgent → Execution Agent → Shell Agent (C-based Sandbox)
+        Shell Agent is C-based (awesh_sandbox.c) for fast command execution.
+        """
+        debug_log(f"Executing AI command via Execution Agent → Shell Agent (C): {command}")
+        
+        # Route through Execution Agent → Shell Agent (C-based sandbox)
+        try:
+            result = await self.execution_agent.execute_command(command)
+            
+            if result.success:
+                output = result.stdout if result.stdout else "Command executed successfully"
+                return f"✅ {output}"
+            else:
+                error = result.stderr if result.stderr else f"Command failed with exit code {result.exit_code}"
+                return f"❌ {error}"
+        except Exception as e:
+            debug_log(f"Execution Agent error: {e}")
+            # Fallback to old method only if execution agent fails
+            return await self._execute_command_directly_fallback(command)
+    
+    async def _execute_command_directly_fallback(self, command: str) -> str:
+        """Fallback direct execution (should not normally be used)"""
+        debug_log(f"⚠️ Using fallback direct execution for: {command}")
         
         try:
             import subprocess

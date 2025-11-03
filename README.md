@@ -91,7 +91,7 @@ awev on/off                 # Enable/disable verbose
 **[AIOps: Artificial Intelligence for IT Operations](https://www.amazon.com/dp/B0FNKKXFPQ)** - A comprehensive guide to the AI revolution in IT operations, documenting real-world transformations and practical implementation strategies. Written by the creator of this toolkit, it provides the theoretical foundation and strategic insights behind these tools.
 
 ## 🐚 awesh - AIWES (Awe-Inspired Workspace Environment Shell)
-*"AI by default, Bash when I mean Bash"*
+*"Bash by default, AI to augment as needed"*
 
 **💎 Naming Inspiration:**
 awesh draws its name from my eldest daughter, **Awit Perl** - where "Awit" means "Psalm" in Filipino, representing both "Awe" and "Wit," while "Perl" refers to the PERL programming language (still more OG than the Python we have today). This shell embodies the same wonder and wisdom that inspired its creation.
@@ -127,16 +127,19 @@ awesh embraces the **minimalistic yet powerful** approach that operations profes
 A 23-year terminal veteran is the perfect test user for writing an AI-enhanced terminal - not developers who spent time in advanced IDEs pampered by so much GUI tooling. Experienced terminal users understand the real workflow, know what's actually needed, and can identify when AI assistance genuinely enhances rather than complicates the shell experience.
 
 **🌟 Core Philosophy:**
-- **Zero-Friction AI**: No special syntax - just type naturally
-- **Intelligent Routing**: Automatically detects AI vs Bash intent
+- **Bash First**: Shell commands execute directly - no AI overhead
+- **AI Augmentation**: AI helps when commands fail or you need assistance
+- **Intelligent Routing**: Automatically detects Bash vs AI intent
 - **Context-Aware**: Remembers your environment and command history
-- **Safety First**: AI suggestions with human control
-- **Gradual Adoption**: Works alongside your existing workflow
+- **Safety First**: AI suggestions validated in sandbox before execution
+- **Zero-Friction**: Works alongside your existing workflow seamlessly
 
 **🚀 Key Features:**
+- **Bash-First Execution**: Shell commands execute directly without AI overhead
+- **AI Augmentation**: AI helps when commands fail or you need intelligent assistance
 - **Smart Command Routing**: Detects shell syntax, commands, and natural language automatically
 - **Multi-Provider AI Integration**: Powered by OpenAI, OpenRouter, Perplexity, or Ollama with configurable models
-- **Agent System**: Four specialized agents (FileAgent, FileEditor, ExecutionAgent, TODOAgent) for intelligent task execution
+- **Agent System**: Specialized agents (ResponseAgent, FileAgent, FileEditor, ExecutionAgent, ShellAgent, TODOAgent) for intelligent task execution
 - **System Prompt Support**: Customizable AI behavior for your operations context  
 - **Streaming Responses**: Real-time AI output with conversation continuity
 - **Environment Variable Support**: Easy configuration via `~/.aweshrc`
@@ -156,7 +159,7 @@ awesh> awem gpt-4                          # → Built-in command (set model)
 awesh> awev 1                              # → Built-in command (enable verbose)
 ```
 
-**"AI by default, Bash when I mean Bash."**
+**"Bash by default, AI to augment as needed."**
 
 **🔧 Installation:**
 ```bash
@@ -262,7 +265,7 @@ This project is open source and available under the Apache License 2.0.
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                                awesh System Architecture                        │
-│                          "AI by default, Bash when I mean Bash"                │
+│                          "Bash by default, AI to augment as needed"            │
 │                             4-Component Architecture                           │
 └─────────────────────────────────────────────────────────────────────────────────┘
 
@@ -371,9 +374,14 @@ Components:
     │   └── Validation & Undo
     │
     ├── ExecutionAgent (execution_agent.py)
-    │   ├── Sandbox Command Execution
+    │   ├── Routes commands to Shell Agent (C-based)
     │   ├── Result Capture (stdout/stderr/exit codes)
     │   └── Multi-step Iteration
+    │
+└── ResponseAgent (response_agent.py)
+    ├── Analyzes AI responses
+    ├── Routes to specialized agents
+    └── Coordinates multi-agent workflows
     │
     └── TODOAgent (todo_agent.py)
         ├── Goal Management
@@ -631,7 +639,54 @@ Default: Operations-focused prompt for infrastructure management
 - **Safety**: No direct shell execution from AI
 - **Audit**: Configurable logging and monitoring
 
-## 🤖 Backend Agents
+## 🤖 Agent-Based Architecture
+
+awesh uses an **agent-based architecture** where all operations flow through specialized agents. The system follows a coordinator pattern where the **Response Agent** routes AI responses to appropriate specialized agents.
+
+### Agent Hierarchy
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Response Agent                            │
+│              (Coordinator & Router)                         │
+│                                                              │
+│  - Analyzes AI responses                                     │
+│  - Routes to specialized agents                              │
+│  - Coordinates multi-agent workflows                        │
+└─────────────────────────────────────────────────────────────┘
+                            │
+        ┌───────────────────┼───────────────────┬──────────────┐
+        │                   │                   │              │
+        ▼                   ▼                   ▼              ▼
+┌───────────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────────────┐
+│ File Editor   │  │ Execution    │  │ File Agent   │  │ TODO Agent  │
+│ Agent         │  │ Agent        │  │              │  │             │
+│               │  │              │  │              │  │             │
+│ - Edit files  │  │ Routes to    │  │ - File       │  │ - Goal      │
+│ - Create files│  │ Shell Agent  │  │   context    │  │   tracking  │
+│ - File ops    │  │              │  │ - Detection  │  │ - Iterations│
+└───────────────┘  └──────┬────────┘  └──────────────┘  └─────────────┘
+                         │
+                         ▼
+                  ┌──────────────┐
+                  │ Shell Agent  │ ⚡
+                  │ (C-based)     │
+                  │               │
+                  │ - Fast exec   │
+                  │ - Validation  │
+                  │ - Isolated    │
+                  │ - PTY support │
+                  └──────────────┘
+```
+
+**Key Architecture Points:**
+- **Response Agent** coordinates all agents and routes AI responses
+- **All commands** go through: Response Agent → Execution Agent → Shell Agent (C-based)
+- **Shell Agent** is a specialized C-based agent (`awesh_sandbox.c`) for fast command execution
+- **File operations** centralized through File Editor Agent
+- **Safety**: All commands validated in Shell Agent before returning to user
+
+### Backend Agents
 
 awesh includes a sophisticated agent system that enables intelligent, context-aware AI interactions. These agents work together to provide a comprehensive AI assistance experience similar to Cursor/Claude Code.
 
@@ -692,14 +747,18 @@ PORT = 8080
 ```
 
 ### 3. **ExecutionAgent** (`execution_agent.py`)
-Sandbox-based command execution for AI's internal information gathering.
+Routes commands to Shell Agent (C-based) for fast execution.
 
 **Key Distinction:** This agent is **separate** from direct user command execution:
 - **User Commands**: Execute directly in the user's terminal (unfiltered, immediate)
-- **AI Commands**: Execute in isolated sandbox (for AI's internal use only)
+- **AI Commands**: Route through Execution Agent → Shell Agent (C-based) → Validated execution
+
+**Architecture:**
+- Execution Agent → Shell Agent (Sandbox/C) → Command Execution
+- Shell Agent is C-based (`awesh_sandbox.c`) for performance and quick response
 
 **Features:**
-- **Isolated Sandbox**: Commands run in a separate environment
+- **Routes to Shell Agent**: Commands go through C-based Shell Agent for fast execution
 - **Capture Results**: Captures stdout, stderr, and exit codes
 - **Multi-step Execution**: Supports iterative command execution with feedback loops
 - **Information Gathering**: AI uses this to gather information before answering
@@ -724,7 +783,40 @@ ExecutionAgent: Verifies edit with `grep PORT config.py`
 AI Response: "Updated PORT to 8080 in config.py"
 ```
 
-### 4. **TODOAgent** (`todo_agent.py`)
+### 4. **ResponseAgent** (`response_agent.py`)
+Coordinates all agents and routes AI responses to appropriate specialized agents.
+
+**Features:**
+- **Response Analysis**: Analyzes AI responses to detect commands, file edits, or information
+- **Agent Routing**: Routes to File Editor, Execution Agent, or displays as-is
+- **Command Detection**: Detects explicit `awesh:` commands for execution
+- **File Block Detection**: Detects file edit blocks (` ```edit:filename ``` `)
+- **Code Block Detection**: Detects code blocks that should be written to files
+- **Thinking Process Cleaning**: Removes Ollama thinking markers from responses
+
+**Routing Logic:**
+1. File edit blocks → File Editor Agent
+2. `awesh:` commands → Execution Agent → Shell Agent (C)
+3. Code blocks that look like files → File Editor Agent
+4. Plain responses → Display as-is
+
+### 5. **Shell Agent** (`awesh_sandbox.c` - C-based)
+Specialized C-based agent for fast command validation and execution.
+
+**Why C-based:** Performance - provides quick response on shell commands. Critical for fast command validation and execution.
+
+**Features:**
+- **Fast Execution**: C implementation for speed
+- **Command Validation**: Validates syntax and safety
+- **Isolated Environment**: PTY-based isolated execution
+- **Result Capture**: Captures stdout, stderr, exit codes
+- **Quick Response**: Optimized for fast command testing
+
+**Location:** `awesh_sandbox.c` (not Python - specialized C agent)
+
+**Communication:** Via Unix socket (`~/.awesh_sandbox.sock`)
+
+### 6. **TODOAgent** (`todo_agent.py`)
 Goal-oriented task execution with iterative AI feedback loops.
 
 **Features:**
@@ -778,11 +870,22 @@ awesh: systemctl status nginx
 
 ### Agent Integration
 
-All agents work together seamlessly:
-- **FileAgent** enhances prompts with file context
-- **ExecutionAgent** provides execution results for iterative refinement
-- **FileEditor** makes precise file modifications
+All agents work together seamlessly through the Response Agent coordinator:
+- **ResponseAgent** analyzes and routes AI responses to appropriate agents
+- **FileAgent** enhances prompts with file context (used in prompt processing)
+- **ExecutionAgent** routes commands to Shell Agent for fast execution
+- **FileEditor** makes precise file modifications and creates files
+- **ShellAgent** (C-based) provides fast command validation and execution
 - **TODOAgent** orchestrates complex multi-step goals
+
+**Command Flow:**
+```
+AI Response → Response Agent
+    ├─→ File Edit Block? → File Editor Agent
+    ├─→ awesh: Command? → Execution Agent → Shell Agent (C) ⚡
+    ├─→ Code Block (file)? → File Editor Agent
+    └─→ Plain Response? → Display as-is
+```
 
 This agent system enables awesh to handle complex, multi-step operations that would require multiple manual interactions in a traditional shell, while maintaining safety and control.
 

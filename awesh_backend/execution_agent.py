@@ -1,11 +1,23 @@
 """
-Execution Agent for awesh - Like Cursor's agent terminals
+Execution Agent for awesh - Routes commands to Shell Agent (C-based Sandbox)
 
-IMPORTANT: This is SEPARATE from user's direct command execution.
+This agent routes commands to the Shell Agent, which is a specialized C-based agent
+(awesh_sandbox.c) for fast command validation and execution.
+
+Architecture:
+- Execution Agent → Shell Agent (Sandbox/C) → Command Execution
+- Shell Agent is C-based for speed and quick response on shell commands
+- All AI-suggested commands go through this path for validation
 
 Two distinct execution paths:
 1. USER RUNS COMMAND → Frontend executes immediately (unfiltered, direct to user's terminal)
-2. AI RUNS COMMAND → Execution agent runs in sandbox (for AI's internal use, gathering info)
+2. AI RUNS COMMAND → Execution Agent → Shell Agent (C-based) → Validated execution
+
+The Shell Agent (sandbox) is a specialized agent:
+- Implemented in C (awesh_sandbox.c) for performance
+- Provides fast command validation and execution
+- Isolated execution environment with PTY
+- Quick response for shell command testing
 
 This agent is for when the AI needs to:
 - Run commands to gather information before answering
@@ -14,7 +26,7 @@ This agent is for when the AI needs to:
 - Build multi-step solutions
 
 Features:
-- Execute commands in isolated sandbox
+- Route commands to Shell Agent (C-based sandbox)
 - Capture stdout, stderr, exit codes
 - Provide results back to AI for iteration
 - Multi-step execution with feedback loops
