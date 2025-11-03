@@ -295,7 +295,10 @@ Help the user based on this result."""
                         chunk_count += 1
                         debug_log(f"Received chunk {chunk_count}: {chunk[:50]}...")
                     debug_log(f"Total chunks: {chunk_count}, total length: {len(result)}")
-                    return result
+                    
+                    # Clean up Ollama's thinking process if present
+                    cleaned_result = self._clean_ollama_thinking(result)
+                    return cleaned_result
                 
                 # Use longer timeout for local Ollama (10 minutes), shorter for API providers (5 minutes)
                 ai_provider = os.getenv('AI_PROVIDER', 'openai')
@@ -447,6 +450,36 @@ Help the user based on this result."""
             # No marker - assume complete
             return output
     
+    def _clean_ollama_thinking(self, response: str) -> str:
+        """Remove Ollama's verbose thinking process from response"""
+        # Look for the common Ollama thinking markers
+        thinking_end_markers = [
+            "...done thinking.",
+            "... done thinking.",
+            "done thinking.",
+            "done thinking",
+        ]
+        
+        # Find the last occurrence of any thinking marker
+        response_lower = response.lower()
+        last_marker_pos = -1
+        last_marker_len = 0
+        
+        for marker in thinking_end_markers:
+            marker_lower = marker.lower()
+            pos = response_lower.rfind(marker_lower)
+            if pos > last_marker_pos:
+                last_marker_pos = pos
+                last_marker_len = len(marker)
+        
+        if last_marker_pos != -1:
+            # Take everything after the thinking marker
+            cleaned = response[last_marker_pos + last_marker_len:].strip()
+            debug_log(f"🧹 Removed Ollama thinking process ({last_marker_pos} chars before marker)")
+            return cleaned
+        
+        return response
+    
     async def _extract_and_execute_commands(self, ai_response: str, retry_count: int = 0) -> str:
         """Extract awesh: commands from AI response and execute them using stack approach"""
         import re
@@ -454,20 +487,34 @@ Help the user based on this result."""
         debug_log(f"Extracting awesh: commands from AI response (retry {retry_count})")
         debug_log(f"🔍 Full AI response (first 500 chars): {ai_response[:500]}")
         
-        # Find all awesh: command patterns - match until end of line or next awesh: command
-        # Use non-greedy matching to avoid capturing too much
-        awesh_commands = re.findall(r'awesh:\s*([^\n]+)', ai_response, re.MULTILINE)
+        # Clean up Ollama "Thinking..." process - already done in _clean_ollama_thinking
+        # but double-check here in case it wasn't cleaned upstream
+        cleaned_response = self._clean_ollama_thinking(ai_response)
         
-        if not awesh_commands:
+        # Find all awesh: command patterns - must be on their own line or clearly marked
+        # Look for "awesh:" followed by command on same line, not in the middle of text
+        # Pattern: awesh: followed by whitespace and then command (capture until newline or end)
+        awesh_commands = re.findall(r'^awesh:\s*([^\n]+)$|awesh:\s*([^\n]+)', cleaned_response, re.MULTILINE)
+        
+        # Flatten the tuples from the regex groups
+        extracted_commands = []
+        for match in awesh_commands:
+            # regex returns tuple of (group1, group2) - get the non-empty one
+            cmd = match[0] if match[0] else match[1]
+            if cmd and cmd.strip():
+                extracted_commands.append(cmd.strip())
+        
+        if not extracted_commands:
             debug_log("No awesh: commands found - returning response as-is")
-            return f"🤖 {ai_response}\n"
+            # Return cleaned response (without thinking process) if no commands
+            return f"🤖 {cleaned_response}\n"
         
-        debug_log(f"Found {len(awesh_commands)} awesh: commands: {awesh_commands}")
+        debug_log(f"Found {len(extracted_commands)} awesh: commands: {extracted_commands}")
         
         # Create stack of commands (reverse order so we pop from first to last)
         # Minimal validation - only filter out obviously broken commands
         valid_commands = []
-        for cmd in awesh_commands:
+        for cmd in extracted_commands:
             cmd = cmd.strip()
             # Skip if command is empty or too short
             if len(cmd) < 1:
@@ -504,8 +551,8 @@ Help the user based on this result."""
             valid_executable_commands.append(command)
         
         if not valid_executable_commands:
-            debug_log(f"⚠️ No valid commands found after filtering - returning AI response as-is")
-            return f"🤖 {ai_response}\n"
+            debug_log(f"⚠️ No valid commands found after filtering - returning cleaned AI response as-is")
+            return f"🤖 {cleaned_response}\n"
         
         # Execute the first valid command
         command = valid_executable_commands[0]
