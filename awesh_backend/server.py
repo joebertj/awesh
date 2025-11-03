@@ -759,7 +759,7 @@ awesh: <command>"""
                     elif command.startswith("AI_PROVIDER:"):
                         # Switch AI provider dynamically
                         provider = command.split(":", 1)[1].strip()
-                        if provider in ["openai", "openrouter", "ollama"]:
+                        if provider in ["openai", "openrouter", "ollama", "perplexity"]:
                             # Update config and reinitialize AI client
                             self.config.ai_provider = provider
                             response = f"🤖 Switching to {provider}... (restart awesh to take effect)\n"

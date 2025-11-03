@@ -135,7 +135,8 @@ A 23-year terminal veteran is the perfect test user for writing an AI-enhanced t
 
 **🚀 Key Features:**
 - **Smart Command Routing**: Detects shell syntax, commands, and natural language automatically
-- **OpenAI Integration**: Powered by GPT-4/GPT-5 with configurable models
+- **Multi-Provider AI Integration**: Powered by OpenAI, OpenRouter, Perplexity, or Ollama with configurable models
+- **Agent System**: Four specialized agents (FileAgent, FileEditor, ExecutionAgent, TODOAgent) for intelligent task execution
 - **System Prompt Support**: Customizable AI behavior for your operations context  
 - **Streaming Responses**: Real-time AI output with conversation continuity
 - **Environment Variable Support**: Easy configuration via `~/.aweshrc`
@@ -338,9 +339,9 @@ Key Functions:
 │                    Python Backend (awesh_backend)              │
 ├─────────────────────────────────────────────────────────────────┤
 │ • Socket Server (Unix Domain Sockets)                          │
-│ • AI Client Integration (OpenAI/OpenRouter)                    │
+│ • AI Client Integration (OpenAI/OpenRouter/Perplexity/Ollama)  │
 │ • MCP (Model Context Protocol) Tool Execution                  │
-│ • File Agent for File Operations                               │
+│ • Agent System (4 specialized agents)                           │
 │ • RAG (Retrieval Augmented Generation) System                  │
 │ • Security Integration                                         │
 └─────────────────────────────────────────────────────────────────┘
@@ -350,18 +351,34 @@ Components:
 │   ├── Socket Server (~/.awesh.sock)
 │   ├── Command Processing
 │   ├── AI Client Management
-│   └── File Agent Integration
+│   └── Agent Orchestration
 │
 ├── AweshAIClient (ai_client.py)
-│   ├── OpenAI/OpenRouter Integration
+│   ├── OpenAI/OpenRouter/Perplexity/Ollama Integration
 │   ├── Streaming Responses
 │   ├── System Prompt Management
 │   └── Tool Function Calling
 │
-└── FileAgent (file_agent.py)
-    ├── File Reading Operations
-    ├── Content Filtering
-    └── AI-Enhanced File Analysis
+└── Agent System
+    ├── FileAgent (file_agent.py)
+    │   ├── File Detection & Context Injection
+    │   ├── Smart Content Extraction
+    │   └── Binary File Filtering
+    │
+    ├── FileEditor (file_editor.py)
+    │   ├── Search/Replace Editing
+    │   ├── Automatic Backups
+    │   └── Validation & Undo
+    │
+    ├── ExecutionAgent (execution_agent.py)
+    │   ├── Sandbox Command Execution
+    │   ├── Result Capture (stdout/stderr/exit codes)
+    │   └── Multi-step Iteration
+    │
+    └── TODOAgent (todo_agent.py)
+        ├── Goal Management
+        ├── Progress Tracking
+        └── Iterative AI Feedback Loops
 ```
 
 ### 3. Security Agent (awesh_sec)
@@ -613,6 +630,161 @@ Default: Operations-focused prompt for infrastructure management
 - **File Operations**: FileAgent for file reading/analysis
 - **Safety**: No direct shell execution from AI
 - **Audit**: Configurable logging and monitoring
+
+## 🤖 Backend Agents
+
+awesh includes a sophisticated agent system that enables intelligent, context-aware AI interactions. These agents work together to provide a comprehensive AI assistance experience similar to Cursor/Claude Code.
+
+### 1. **FileAgent** (`file_agent.py`)
+Intelligent file detection and context injection for enhanced AI responses.
+
+**Features:**
+- **Smart File Detection**: Automatically detects file references in user prompts using:
+  - Exact filename matching
+  - Partial filename matching (ignoring extensions)
+  - Fuzzy filename matching using grep patterns
+- **Context Injection**: Injects relevant file content into AI prompts for better understanding
+- **Smart Content Extraction**: 
+  - Head/tail extraction for large files
+  - Targeted line extraction when specific lines are referenced
+  - File type-aware content limiting
+- **Multiple File Handling**: Processes up to 5 files per request (configurable)
+- **Binary File Filtering**: Automatically skips binary files (images, executables, etc.)
+
+**Configuration:**
+```bash
+FILE_AGENT_ENABLED=1              # Enable/disable (default: 1)
+FILE_AGENT_MAX_FILE_SIZE=50000    # Max size per file in bytes (default: 50000)
+FILE_AGENT_MAX_TOTAL_CONTENT=10000 # Max total content to inject (default: 10000)
+FILE_AGENT_MAX_FILES=5            # Max number of files to include (default: 5)
+```
+
+**Example Usage:**
+```bash
+awesh> what does config.py do?              # FileAgent detects config.py
+awesh> explain the error in server.py       # FileAgent injects server.py context
+awesh> how does file_agent.py work?         # FileAgent provides file context to AI
+```
+
+### 2. **FileEditor** (`file_editor.py`)
+Surgical file editing with automatic backups and validation.
+
+**Features:**
+- **Search/Replace Editing**: Uses search/replace blocks for precise edits (similar to Cursor/Claude)
+- **Multiple Edits**: Apply multiple edits in a single operation
+- **Automatic Backups**: Creates timestamped backups before modifications
+- **Validation**: Validates file paths and edits before applying
+- **Context-Aware**: Shows surrounding lines for better edit accuracy
+- **Undo Support**: Can restore from backups if needed
+
+**Edit Format:**
+```bash
+awesh> update port to 8080 in config.py
+
+AI Response:
+```edit:config.py
+<<<<<<< OLD
+PORT = 3000
+=======
+PORT = 8080
+>>>>>>> NEW
+```
+```
+
+### 3. **ExecutionAgent** (`execution_agent.py`)
+Sandbox-based command execution for AI's internal information gathering.
+
+**Key Distinction:** This agent is **separate** from direct user command execution:
+- **User Commands**: Execute directly in the user's terminal (unfiltered, immediate)
+- **AI Commands**: Execute in isolated sandbox (for AI's internal use only)
+
+**Features:**
+- **Isolated Sandbox**: Commands run in a separate environment
+- **Capture Results**: Captures stdout, stderr, and exit codes
+- **Multi-step Execution**: Supports iterative command execution with feedback loops
+- **Information Gathering**: AI uses this to gather information before answering
+- **No Interference**: Doesn't affect the user's terminal or working directory
+
+**Use Cases:**
+- AI needs to check if a file exists before suggesting edits
+- AI verifies command syntax before suggesting to user
+- AI gathers system information to provide accurate answers
+- AI iterates on commands based on previous results
+
+**Example Flow:**
+```
+User: "update the port in config.py"
+  ↓
+ExecutionAgent: Runs `cat config.py` in sandbox to read file
+  ↓
+FileEditor: Makes edit based on file content
+  ↓
+ExecutionAgent: Verifies edit with `grep PORT config.py`
+  ↓
+AI Response: "Updated PORT to 8080 in config.py"
+```
+
+### 4. **TODOAgent** (`todo_agent.py`)
+Goal-oriented task execution with iterative AI feedback loops.
+
+**Features:**
+- **Goal Management**: Manages 1 goal with up to 10 iterations
+- **Progress Tracking**: Tracks progress toward goal completion
+- **Iterative Execution**: AI iterates with feedback until goal is achieved
+- **Integration**: Works with FileEditor and ExecutionAgent for multi-step tasks
+- **Smart Stopping**: Stops after completing goal or asks user to continue
+
+**Architecture:**
+```
+User: "deploy nginx to kubernetes with monitoring"
+  ↓
+TODOAgent creates goal with subtasks
+  ↓
+Iteration 1: AI creates deployment.yaml → FileEditor
+Iteration 2: AI applies deployment → ExecutionAgent
+Iteration 3: AI verifies pods running → ExecutionAgent
+Iteration 4: AI sets up monitoring → FileEditor + ExecutionAgent
+  ↓
+Goal complete ✅ or Ask user to continue
+```
+
+**Response Markers:**
+- `✅ GOAL_COMPLETE` - Goal finished successfully
+- `🔄 CONTINUE_ITERATION` - Continue with next step
+- `❓ NEED_USER_INPUT` - Need user to choose/confirm something
+
+**Example:**
+```bash
+awesh> set up a web server with nginx on port 80
+
+AI Response:
+```edit:nginx.conf
+<<<<<<< OLD
+=======
+server {
+    listen 80;
+    server_name localhost;
+    ...
+}
+>>>>>>> NEW
+```
+awesh: sudo systemctl start nginx
+🔄 CONTINUE_ITERATION
+
+[Next iteration: AI verifies nginx is running]
+awesh: systemctl status nginx
+✅ GOAL_COMPLETE
+```
+
+### Agent Integration
+
+All agents work together seamlessly:
+- **FileAgent** enhances prompts with file context
+- **ExecutionAgent** provides execution results for iterative refinement
+- **FileEditor** makes precise file modifications
+- **TODOAgent** orchestrates complex multi-step goals
+
+This agent system enables awesh to handle complex, multi-step operations that would require multiple manual interactions in a traditional shell, while maintaining safety and control.
 
 ## Installation & Usage
 

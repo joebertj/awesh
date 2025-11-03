@@ -992,7 +992,7 @@ void load_config() {
         } else if (strcmp(ai_provider, "ollama") == 0) {
             setenv("MODEL", "llama3.2", 1);  // Default Ollama model (common local model)
         } else if (strcmp(ai_provider, "perplexity") == 0) {
-            setenv("MODEL", "sonar", 1);  // Default Perplexity model
+            setenv("MODEL", "sonar", 1);  // Default Perplexity model (sonar is the base model name)
         } else {
             setenv("MODEL", "gpt-4-turbo", 1);  // Default OpenAI model
         }
@@ -1506,13 +1506,15 @@ void handle_awesh_command(const char* cmd) {
         printf("  awea openai       Switch to OpenAI\n");
         printf("  awea openrouter   Switch to OpenRouter\n");
         printf("  awea ollama       Switch to Ollama (local models)\n");
-        printf("  awea perplexity   Switch to Perplexity\n");
+        printf("  awea perplexity   Switch to Perplexity (web-enhanced AI)\n");
         printf("\n📋 Model:\n");
         printf("  awem              Show current model and supported models\n");
         printf("  awem gpt-4        Set model to GPT-4 (OpenAI)\n");
         printf("  awem gpt-5        Set model to GPT-5 (OpenAI)\n");
         printf("  awem kimi-k2      Set model to Kimi K2 (OpenRouter)\n");
         printf("  awem claude-sonnet Set model to Claude Sonnet (OpenRouter)\n");
+        printf("  awem sonar        Set model to Sonar (Perplexity)\n");
+        printf("  awem sonar-pro    Set model to Sonar Pro (Perplexity)\n");
         printf("  awem <name>       Set any Ollama model (e.g., awem llama3.2)\n");
         printf("\n💡 All commands use 'awe' prefix to avoid bash conflicts\n");
     } else if (strcmp(cmd, "awes") == 0) {
@@ -1635,8 +1637,11 @@ void handle_awesh_command(const char* cmd) {
             printf("  • kimi-k2       - Kimi K2 (fast, efficient)\n");
             printf("  • claude-sonnet - Claude Sonnet (reasoning, analysis)\n");
             printf("\n🔹 Perplexity Models:\n");
-            printf("  • sonar         - Sonar (fast, efficient)\n");
-            printf("  • sonar-pro     - Sonar Pro (advanced, latest)\n");
+            printf("  • sonar                        - Sonar (fast, efficient, web-enabled)\n");
+            printf("  • sonar-pro                    - Sonar Pro (advanced, web-enhanced)\n");
+            printf("  • llama-3.1-sonar-large-128k-online - Llama 3.1 Sonar Large (online)\n");
+            printf("  • sonar-small-online          - Sonar Small (online, web search)\n");
+            printf("  • sonar-medium-online          - Sonar Medium (online, web search)\n");
             
             // Dynamically fetch Ollama models if Ollama is available
             printf("\n🔹 Ollama Models:\n");
