@@ -2169,6 +2169,43 @@ void execute_command_securely(const char* cmd) {
         printf("DEBUG: execute_command_securely called with: %s\n", cmd);
     }
     
+    // Handle built-in commands that must run in the current process
+    char cmd_copy[MAX_CMD_LEN];
+    strncpy(cmd_copy, cmd, sizeof(cmd_copy) - 1);
+    cmd_copy[sizeof(cmd_copy) - 1] = '\0';
+    
+    // Extract first word
+    char* first_word = strtok(cmd_copy, " \t");
+    if (first_word && strcmp(first_word, "cd") == 0) {
+        // Handle cd command - must change directory in current process
+        char* target_dir = strtok(NULL, " \t");
+        if (!target_dir || strlen(target_dir) == 0) {
+            // cd with no arguments - go to home directory
+            const char* home = getenv("HOME");
+            if (home) {
+                if (chdir(home) == 0) {
+                    if (state.verbose >= 2) {
+                        printf("✅ Changed directory to %s\n", home);
+                    }
+                } else {
+                    printf("cd: %s: No such file or directory\n", home);
+                }
+            } else {
+                printf("cd: HOME not set\n");
+            }
+        } else {
+            // cd to specified directory
+            if (chdir(target_dir) == 0) {
+                if (state.verbose >= 2) {
+                    printf("✅ Changed directory to %s\n", target_dir);
+                }
+            } else {
+                printf("cd: %s: No such file or directory\n", target_dir);
+            }
+        }
+        return;
+    }
+    
     // Check if this looks like an AI query first (BEFORE executing)
     if (is_ai_query(cmd) && backend_ready) {
         if (state.verbose >= 2) {
